@@ -181,8 +181,9 @@ extension ContentView {
                         HStack(spacing:5){Text("✦");Text(l("匿名发布","Anonymous"))}.font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0xa8737a)).padding(.horizontal,11).padding(.vertical,6).background(Color(hex:0xf7e6e0),in:Capsule())
                         Spacer()
                     }
-                    TextEditor(text:$writeText).focused($writingFocused).font(.system(size:16)).lineSpacing(4).padding(12).frame(height:146,alignment:.topLeading).background(Color(hex:0xf7f1ee),in:RoundedRectangle(cornerRadius:17)).overlay(RoundedRectangle(cornerRadius:17).stroke(Color(hex:0xf0e7e2),lineWidth:1)).padding(.top,10)
-                        .overlay(alignment:.topLeading){ if writeText.isEmpty { Text(l("最近有什么让你纠结的事？","What's been on your mind lately?")).font(.system(size:16)).foregroundColor(Color(hex:0xb3a5a0)).padding(.leading,17).padding(.top,22).allowsHitTesting(false) } }
+                    GrowField(text:$writeText,height:.constant(146),focused:$writeFieldFocused,maxHeight:146,label:l("烦恼正文","Story text"))
+                        .frame(height:146,alignment:.topLeading).background(Color(hex:0xf7f1ee),in:RoundedRectangle(cornerRadius:17)).overlay(RoundedRectangle(cornerRadius:17).stroke(Color(hex:0xf0e7e2),lineWidth:1)).padding(.top,10)
+                        .overlay(alignment:.topLeading){ if writeText.isEmpty { Text(l("最近有什么让你纠结的事？","What's been on your mind lately?")).font(.system(size:16)).foregroundColor(Color(hex:0xb3a5a0)).padding(.leading,12).padding(.top,13).allowsHitTesting(false) } }
                     HStack{
                         Text(l("说你想说的","In your own words"))
                         Spacer()
@@ -205,7 +206,7 @@ extension ContentView {
         guard requireLogin("publish") else{return}
         localState.localStories.insert(NativeStory(id:"local-\(UUID().uuidString)",text:text,created:Date().timeIntervalSince1970*1000,answers:[]),at:0)
         rebuildVisibleStories()
-        model.index=0;writeText="";writingFocused=false;persistLocal();withAnimation(transitionAnimation){utility=nil}
+        model.index=0;writeText="";writeFieldFocused=false;persistLocal();withAnimation(transitionAnimation){utility=nil}
         toast(l("烦恼已保存在本机","Story saved on this device"))
     }
     func morePage(width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
@@ -735,6 +736,7 @@ struct GrowField:UIViewRepresentable {
     @Binding var height:CGFloat
     @Binding var focused:Bool
     var maxHeight:CGFloat = 112
+    var label: String?
     func makeUIView(context:Context)->UITextView {
         let v=UITextView()
         v.backgroundColor = .clear
@@ -744,11 +746,13 @@ struct GrowField:UIViewRepresentable {
         v.isScrollEnabled = false
         v.delegate = context.coordinator
         v.text = text
+        v.accessibilityLabel = label
         v.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
         return v
     }
     func updateUIView(_ v:UITextView,context:Context){
         context.coordinator.parent = self
+        v.accessibilityLabel = label
         if v.markedTextRange == nil && v.text != text { v.text = text }
         if focused && !v.isFirstResponder { v.becomeFirstResponder() }
         if !focused && v.isFirstResponder { v.resignFirstResponder() }

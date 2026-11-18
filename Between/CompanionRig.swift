@@ -76,6 +76,11 @@ struct CompanionRig: View {
                 )
                 .allowsHitTesting(interactive && motion && bridge.ready)
                 .offset(x:touchOffsetX)
+                .accessibilityElement(children:.ignore)
+                .accessibilityLabel(angel ? (chinese ? "天使":"Angel companion") : (chinese ? "恶魔":"Devil companion"))
+                .accessibilityHidden(!interactive || !motion || !bridge.ready)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { if interactive && motion && bridge.ready { bridge.run("buddyTap(0,0)") } }
         }
         .frame(width: 250, height: 250)
         .onAppear { bridge.update(script) }
@@ -100,11 +105,7 @@ struct CompanionRig: View {
                 }
             }
         }
-        .accessibilityElement(children:.ignore)
-        .accessibilityLabel(angel ? (chinese ? "天使":"Angel companion") : (chinese ? "恶魔":"Devil companion"))
-        .accessibilityHidden(!interactive || !motion || !bridge.ready)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction { if interactive && motion && bridge.ready { bridge.run("buddyTap(0,0)") } }
+
     }
 
     private func resetInteraction() {

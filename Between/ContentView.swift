@@ -44,6 +44,7 @@ struct ContentView: View {
     @State var writeText = ""
     @State var updateText = ""
     @FocusState var writingFocused: Bool
+    @State var writeFieldFocused = false
     @State var snapshots: [NativeStory] = []
     @State var reports: [String] = []
     @State var hidden: [String] = []
@@ -90,6 +91,7 @@ struct ContentView: View {
             composerFocused = false
             replyFocused = false
             writingFocused = false
+            writeFieldFocused = false
             withAnimation(transitionAnimation){loginPrompt=reason}
             return false
         }
@@ -254,6 +256,7 @@ struct ContentView: View {
         replyFocused = false
         composerFocused = false
         writingFocused = false
+        writeFieldFocused = false
         snapshotStory = nil
         likePulse = [:]
         if resumingAction, previousDiscussion == nil || discussionStory != nil {
@@ -563,7 +566,7 @@ struct ContentView: View {
         let strong = abs(devilCount-angelCount) > 1
         let mode = companionMode
         let interactive = scenePhase == .active && !settling && keyboardHeight == 0 && camp == nil && axis == nil
-            && !composerFocused && !writingFocused && !replyFocused && !nicknameFocused
+            && !composerFocused && !writingFocused && !writeFieldFocused && !replyFocused && !nicknameFocused
             && detailStory == nil && snapshotStory == nil && loginPrompt == nil && !nicknameMode && !guideVisible
             && (utility == nil || utility == "write" || mode == .library)
         let place = CompanionPlacement(width:width,top:top,height:height,mode:mode,panelProgress:campProgress,fromDetail:detailStory != nil)
@@ -695,6 +698,7 @@ struct ContentView: View {
     }
     private func resetInputFocus() {
         writingFocused = false
+        writeFieldFocused = false
         replyFocused = false
         composerFocused = false
         nicknameFocused = false

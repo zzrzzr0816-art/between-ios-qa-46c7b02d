@@ -132,8 +132,8 @@ try {
 
   await tapLabel('Post');
   await waitFor('Write sheet and one role', labels =>
-    labels.has("What's on your mind?") && hasRole(labels,'devil') !== hasRole(labels,'angel'));
-  await tapTextArea();
+    labels.has("What's on your mind?") && labels.has('Story text') && hasRole(labels,'devil') !== hasRole(labels,'angel'));
+  await tapLabel('Story text');
   await waitFor('Write keyboard and one role', labels =>
     labels.has('QA keyboard visible') && hasRole(labels,'devil') !== hasRole(labels,'angel'));
   const writeRole = flatten(JSON.parse(lastTree) as AxNode[]).some(node => node.AXLabel === 'QA devil companion') ? 'devil' : 'angel';
