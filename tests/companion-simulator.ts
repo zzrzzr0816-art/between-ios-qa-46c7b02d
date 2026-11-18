@@ -8,6 +8,7 @@ import { IdbClient } from './src/server/idb/client.ts';
 
 type AxNode = {
   AXLabel?: string;
+  type?: string;
   frame?: { x: number; y: number; width: number; height: number };
   children?: AxNode[];
 };
@@ -96,6 +97,13 @@ try {
     await tap(frame.x + frame.width / 2, frame.y + frame.height / 2);
   };
 
+  const tapTextArea = async () => {
+    const nodes = flatten(JSON.parse(lastTree) as AxNode[]);
+    const frame = nodes.find(node => node.type === 'TextArea' && node.frame)?.frame;
+    if (!frame) throw new Error('No visible text area on the current screen');
+    await tap(frame.x + frame.width / 2, frame.y + frame.height / 2);
+  };
+
   for (const [index, direction] of [[2,-1],[3,-1],[2,1],[1,1]]) {
     await swipe(width * 0.5, height * 0.55, 0, direction * height * 0.24);
     await waitFor('Continuous feed gesture to ' + index,
@@ -112,8 +120,8 @@ try {
     const direction = side === 'devil' ? -1 : 1;
     await swipe(width * 0.5, height * 0.51, direction * width * 0.39, 0);
     await waitFor(side + ' discussion and selected role',
-      labels => labels.has('The conversation') && hasRole(labels,side) && !both(labels));
-    await tap(width * 0.32, height - 74);
+      labels => labels.has('The conversation') && hasRole(labels,side) && !both(labels) && !labels.has('Post'));
+    await tapTextArea();
     await waitFor(side + ' discussion keyboard and visible role',
       labels => labels.has('QA keyboard visible') && hasRole(labels,side));
     screenshot(side + '-keyboard', [side]);
@@ -125,7 +133,7 @@ try {
   await tapLabel('Post');
   await waitFor('Write sheet and one role', labels =>
     labels.has("What's on your mind?") && hasRole(labels,'devil') !== hasRole(labels,'angel'));
-  await tap(width * 0.47, height * 0.34);
+  await tapTextArea();
   await waitFor('Write keyboard and one role', labels =>
     labels.has('QA keyboard visible') && hasRole(labels,'devil') !== hasRole(labels,'angel'));
   const writeRole = flatten(JSON.parse(lastTree) as AxNode[]).some(node => node.AXLabel === 'QA devil companion') ? 'devil' : 'angel';
