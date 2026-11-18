@@ -19,7 +19,6 @@ struct CompanionRig: View {
     var touchOffsetX: CGFloat = 0
     var interactive = true
     var context: CompanionMode = .home
-    var slide: CGFloat = 0
     var moveWithFinger: ((CGSize, Bool) -> Void)?
     var cancelMove: (() -> Void)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -83,8 +82,6 @@ struct CompanionRig: View {
                 .accessibilityAction { if interactive && motion && bridge.ready { bridge.run("buddyTap(0,0)") } }
         }
         .frame(width: 250, height: 250)
-        .offset(y: motion ? -abs(slide)*4 : 0)
-        .rotationEffect(.degrees(motion ? Double(slide)*(angel ? -4 : 4) : 0))
         .onAppear { bridge.update(script) }
         .onChange(of: script) { bridge.update($0) }
         .onChange(of: motion) { enabled in

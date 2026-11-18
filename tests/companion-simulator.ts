@@ -106,10 +106,20 @@ try {
     await tap(frame.x + frame.width / 2, frame.y + frame.height / 2);
   };
 
+  const companionPosition = (side: string) =>
+    flatten(JSON.parse(lastTree) as AxNode[]).find(node => node.AXLabel === 'QA ' + side + ' companion')?.frame;
+  const initialPositions = ['angel','devil'].map(companionPosition);
   for (const [index, direction] of [[2,-1],[3,-1],[4,-1],[5,-1],[4,1],[3,1],[2,1],[1,1]]) {
     await swipe(width * 0.5, height * 0.55, 0, direction * height * 0.24);
     await waitFor('Continuous feed gesture to ' + index,
       labels => labels.has(index + ' / 5') && both(labels));
+    for (const [role, side] of ['angel','devil'].entries()) {
+      const initial = initialPositions[role];
+      const position = companionPosition(side);
+      if (!initial || !position || Math.abs(initial.y - position.y) > 1) {
+        throw new Error(side + ' companion changed height during a feed page turn');
+      }
+    }
     await delay(160);
   }
   await swipe(width * 0.5, height * 0.51, -width * 0.12, 0);
@@ -149,6 +159,9 @@ try {
   await waitFor('Story detail horizontal swipe stays on detail', labels => labels.has('View angel responses') && !labels.has('The conversation'));
   await tapLabel('View angel responses');
   await waitFor('Companion opens the same angel discussion', labels => labels.has('The conversation') && hasRole(labels,'angel') && !hasRole(labels,'devil'));
+  // The destination can appear in the accessibility tree before the panel
+  // finishes its 340 ms entrance and accepts a new gesture.
+  await delay(400);
   await swipe(width * 0.5, height * 0.51, width * 0.39, 0);
   await waitFor('Swiping discussion closed returns to the expanded story', labels => labels.has('View angel responses') && !labels.has('The conversation'));
   await tapLabel('Back');

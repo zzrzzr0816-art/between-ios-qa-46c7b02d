@@ -25,7 +25,7 @@ extension ContentView {
                     ForEach(answers){answer in commentCard(answer)}
                 }.padding(.horizontal,20).padding(.top,10).padding(.bottom,18)
                     .id(chosen)
-                    .transition(.asymmetric(insertion:.offset(x:-chosen.sign*width),removal:.offset(x:-chosen.sign*width)))
+                    .transition(.asymmetric(insertion:.move(edge: chosen == .angel ? .trailing:.leading).combined(with:.opacity),removal:.opacity))
             }
             HStack(spacing:9){
                 ZStack(alignment:.topLeading){
@@ -89,7 +89,9 @@ extension ContentView {
                 if isBest { Text("✦ " + l("最佳","Best")).font(.system(size:11)).foregroundColor(Color(hex:0xa87336)) }
                 Button {openReport("answer",answer.id)} label:{Text("⚑ "+l("举报","Report")).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d)).padding(.leading,8).frame(height:26)}.buttonStyle(.plain)
             }
-            Text(answer.text).font(.system(size:14)).lineSpacing(max(0,14*1.6-UIFont.systemFont(ofSize:14).lineHeight)).fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading).padding(.vertical,12)
+            answerText(answer.text)
+                .opacity(selectedReply?.id == answer.id ? 0 : 1)
+                .animation(nil,value:selectedReply?.id)
             HStack(spacing:8){
                 Button {
                     guard requireLogin("like") else{return}
@@ -123,13 +125,20 @@ extension ContentView {
                 RoundedRectangle(cornerRadius:18).fill(.white)
                     .overlay(RoundedRectangle(cornerRadius:18).stroke(Color(hex:0xf0e9e7),lineWidth:1))
                     .shadow(color:Color(hex:0x806a68).opacity(0.06),radius:8,y:4)
-                    .matchedGeometryEffect(id:answer.id,in:replyAnimation,isSource:selectedReply?.id != answer.id)
             }
             .contentShape(RoundedRectangle(cornerRadius:18))
             .onTapGesture {openReply(answer)}
-            .opacity(selectedReply?.id == answer.id ? 0 : 1)
             .accessibilityHidden(selectedReply?.id == answer.id)
     }
+    private func answerText(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size:14))
+            .lineSpacing(max(0,14*1.6-UIFont.systemFont(ofSize:14).lineHeight))
+            .fixedSize(horizontal:false,vertical:true)
+            .frame(maxWidth:.infinity,alignment:.leading)
+            .padding(.vertical,12)
+    }
+
     func closeComments(){
         guard !settling else { return }
         composerFocused = false
@@ -175,31 +184,41 @@ extension ContentView {
         let sheetBottom = max(1,height-keyboardHeight)
         let sheetTop = H5Design.writeSheetTop(height:height,safeTop:top)
         let sheetH = max(1,sheetBottom-sheetTop)
-        let editorHeight = max(146,height*0.37)
+
         return VStack(spacing:0){
             sheetHead(l("说说你的烦恼","What's on your mind?"),top:0,padBottom:8,companionSlot:keyboardHeight>0)
-            ScrollView {
-                VStack(alignment:.leading,spacing:0){
-                    HStack{
-                        HStack(spacing:5){Text("✦");Text(l("匿名发布","Anonymous"))}.font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0xa8737a)).padding(.horizontal,11).padding(.vertical,6).background(Color(hex:0xf7e6e0),in:Capsule())
-                        Spacer()
-                    }
-                    GrowField(text:$writeText,height:.constant(editorHeight),focused:$writeFieldFocused,maxHeight:editorHeight,
-                              label:l("烦恼正文","Story text"),prompt:l("最近有什么让你纠结的事？","What's been on your mind lately?"))
-                        .frame(height:editorHeight,alignment:.topLeading).background(Color(hex:0xf7f1ee),in:RoundedRectangle(cornerRadius:17)).overlay(RoundedRectangle(cornerRadius:17).stroke(Color(hex:0xf0e7e2),lineWidth:1)).padding(.top,10)
-                    HStack{
-                        Text(l("说你想说的","In your own words"))
-                        Spacer()
-                        Text("\(count) / 1500")
-                    }.font(.system(size:12)).foregroundColor(Color(hex:0xa29490)).padding(.top,8)
-                    HStack(alignment:.top,spacing:7){
-                        Text("◷").font(.system(size:12))
-                        Text(l("烦恼和公开讨论将在 24 小时后消失。其他人可以在到期前保存私密快照。","The public story and discussion disappear after 24 hours. Others can save a private snapshot before then."))
-                    }.font(.system(size:12)).foregroundColor(Color(hex:0x8c7b72)).padding(12).frame(maxWidth:.infinity,alignment:.leading).background(Color(hex:0xf8f2ec),in:RoundedRectangle(cornerRadius:13)).padding(.top,14)
-                    Spacer(minLength:12)
-                    Button {publishStory()} label:{HStack(spacing:6){Text(l("匿名发布","Share anonymously"));Text("↗")}.font(.system(size:15,weight:.bold)).foregroundColor(.white).frame(maxWidth:.infinity,minHeight:48).background(Color(hex:0xc8786d),in:RoundedRectangle(cornerRadius:15))}.buttonStyle(PressScale())
-                }.padding(.horizontal,20).padding(.bottom,keyboardHeight > 0 ? 16 : bottom+20)
+            GeometryReader { available in
+                let editorHeight = max(136,available.size.height-132)
+                ScrollView {
+                    VStack(alignment:.leading,spacing:0){
+                        HStack{
+                            HStack(spacing:5){Text("✦");Text(l("匿名发布","Anonymous"))}.font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0xa8737a)).padding(.horizontal,11).padding(.vertical,6).background(Color(hex:0xf7e6e0),in:Capsule())
+                            Spacer()
+                        }
+                        GrowField(text:$writeText,height:.constant(editorHeight),focused:$writeFieldFocused,maxHeight:editorHeight,
+                                  label:l("烦恼正文","Story text"),prompt:l("最近有什么让你纠结的事？","What's been on your mind lately?"))
+                            .frame(height:editorHeight,alignment:.topLeading).background(Color(hex:0xf7f1ee),in:RoundedRectangle(cornerRadius:17)).overlay(RoundedRectangle(cornerRadius:17).stroke(Color(hex:0xf0e7e2),lineWidth:1)).padding(.top,10)
+                        HStack{
+                            Text(l("说你想说的","In your own words"))
+                            Spacer()
+                            Text("\(count) / 1500")
+                        }.font(.system(size:12)).foregroundColor(Color(hex:0xa29490)).padding(.top,8)
+                        HStack(alignment:.top,spacing:7){
+                            Text("◷").font(.system(size:12))
+                            Text(l("烦恼和公开讨论将在 24 小时后消失。其他人可以在到期前保存私密快照。","The public story and discussion disappear after 24 hours. Others can save a private snapshot before then."))
+                        }.font(.system(size:12)).foregroundColor(Color(hex:0x8c7b72)).padding(12).frame(maxWidth:.infinity,alignment:.leading).background(Color(hex:0xf8f2ec),in:RoundedRectangle(cornerRadius:13)).padding(.top,14)
+                    }.padding(.horizontal,20).padding(.bottom,10)
+                }
             }
+            Button {publishStory()} label:{
+                HStack(spacing:6){Text(l("匿名发布","Share anonymously"));Text("↗")}
+                    .font(.system(size:15,weight:.bold)).foregroundColor(.white)
+                    .frame(maxWidth:.infinity,minHeight:48)
+                    .background(Color(hex:0xc8786d),in:RoundedRectangle(cornerRadius:15))
+            }.buttonStyle(PressScale())
+                .padding(.horizontal,20)
+                .padding(.top,8)
+                .padding(.bottom,keyboardHeight > 0 ? 8 : bottom+12)
         }.frame(width:width,height:sheetH,alignment:.top).background(Color(hex:0xfffbf9)).clipShape(TopRoundedShape(radius:26)).offset(y:sheetTop).frame(width:width,height:height,alignment:.top)
     }
     func publishStory(){
@@ -378,10 +397,7 @@ extension ContentView {
     }
     func detailPage(_ story:NativeStory,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
         ZStack(alignment:.top){
-            RoundedRectangle(cornerRadius:0)
-                .fill(H5Design.background)
-                .overlay(Rectangle().stroke(Color.white.opacity(0.65),lineWidth:1))
-                .frame(width:width,height:height)
+            H5Design.background
                 .allowsHitTesting(false)
             VStack(spacing:0){
                 HStack{
@@ -701,10 +717,12 @@ extension ContentView {
 
     // MARK: - Reply layer
     func replyOverlay(_ answer:NativeAnswer,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
-        let lowerEdge = height - (keyboardHeight > 0 ? keyboardHeight+4 : bottom+6)
-        let upperEdge = top+6
-        let dialogH = max(1,lowerEdge-upperEdge)
-        let dialogCenter = upperEdge+dialogH/2
+        let lowerEdge = height - (keyboardHeight > 0 ? keyboardHeight+8 : bottom+18)
+        let upperEdge = top+18
+        let available = max(1,lowerEdge-upperEdge)
+        let dialogH = min(available,height*0.76)
+        let dialogCenter = upperEdge+available/2
+        let dialogWidth = max(1,width-32)
         let side = NativeCamp(rawValue:answer.side)
         let accent = side?.accent ?? H5Design.muted
         let surface = side?.background ?? Color(hex:0xfffbf9)
@@ -728,12 +746,13 @@ extension ContentView {
                                 Spacer()
                                 Button {openReport("answer",answer.id)} label:{Text("⚑ "+l("举报","Report")).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d)).frame(height:26)}.buttonStyle(.plain)
                             }
-                            Text(answer.text).font(.system(size:14)).lineSpacing(max(0,14*1.6-UIFont.systemFont(ofSize:14).lineHeight)).fixedSize(horizontal:false,vertical:true).padding(.vertical,12)
+                            answerText(answer.text)
+                                .frame(width:max(1,width-72),alignment:.leading)
                             HStack(spacing:5){
                                 Image(systemName:"heart").font(.system(size:14,weight:.light))
                                 Text("\(answer.likes)").font(.system(size:12))
                             }.foregroundColor(Color(hex:0x897a7a)).padding(.horizontal,11).frame(height:36).background(Color(hex:0xf8f4f2),in:Capsule())
-                        }.padding(16).frame(maxWidth:.infinity,alignment:.leading).background(.white,in:RoundedRectangle(cornerRadius:18)).overlay(RoundedRectangle(cornerRadius:18).stroke(Color(hex:0xf0e9e7),lineWidth:1)).shadow(color:Color(hex:0x654c53).opacity(0.09),radius:12,y:8)
+                        }.padding(8).frame(maxWidth:.infinity,alignment:.leading).background(.white,in:RoundedRectangle(cornerRadius:18)).overlay(RoundedRectangle(cornerRadius:18).stroke(Color(hex:0xf0e9e7),lineWidth:1)).shadow(color:Color(hex:0x654c53).opacity(0.09),radius:12,y:8)
                         Text(l("全部回复","Replies")).font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0x9a8888)).padding(.top,6)
                         if answer.replies.isEmpty {
                             Text(l("还没有回复，来接住这句话吧。","No replies yet. Be the first to respond.")).font(.system(size:14)).foregroundColor(Color(hex:0xa09494)).frame(maxWidth:.infinity).padding(.vertical,12)
@@ -770,12 +789,13 @@ extension ContentView {
                     }.buttonStyle(PressScale()).accessibilityLabel(l("发送回复","Send reply"))
                 }.padding(.horizontal,12).padding(.vertical,8)
             }
-            .frame(width:max(1,width-12),height:dialogH)
+            .frame(width:dialogWidth,height:dialogH)
             .background {
                 RoundedRectangle(cornerRadius:20).fill(surface)
-                    .shadow(color:Color(hex:0x45313a).opacity(0.12),radius:12,y:5)
-                    .matchedGeometryEffect(id:answer.id,in:replyAnimation)
             }
+            .clipShape(RoundedRectangle(cornerRadius:20))
+            .overlay(RoundedRectangle(cornerRadius:20).strokeBorder(accent.opacity(0.22),lineWidth:1))
+            .shadow(color:Color(hex:0x45313a).opacity(0.12),radius:12,y:5)
             .position(x:width/2,y:dialogCenter)
         }.frame(width:width,height:height).id(answer.id)
     }
@@ -794,17 +814,19 @@ private struct StoryContentReveal: AnimatableModifier {
         let remaining = 1-progress
         let width = card.width*remaining+size.width*progress
         let height = card.height*remaining+size.height*progress
-        content.mask(alignment:.topLeading) {
-            RoundedRectangle(cornerRadius:30*remaining)
+        let rect = RoundedRectangle(cornerRadius:30*remaining)
+        let x = card.minX*remaining
+        let y = card.minY*remaining
+        return ZStack(alignment:.topLeading) {
+            rect.fill(H5Design.card)
+                .opacity(min(1,Double(progress)*8))
                 .frame(width:width,height:height)
-                .offset(x:card.minX*remaining,y:card.minY*remaining)
-        }
-        .overlay(alignment:.topLeading) {
-            RoundedRectangle(cornerRadius:30*remaining)
-                .strokeBorder(.white.opacity(0.7*Double(remaining)),lineWidth:1)
-                .frame(width:width,height:height)
-                .offset(x:card.minX*remaining,y:card.minY*remaining)
-                .allowsHitTesting(false)
+                .offset(x:x,y:y)
+            content
+                .opacity(Double(progress))
+                .mask(alignment:.topLeading) {
+                    rect.frame(width:width,height:height).offset(x:x,y:y)
+                }
         }
     }
 }

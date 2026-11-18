@@ -63,7 +63,6 @@ struct ContentView: View {
     @State var guideVisible = false
     @State var composerHeight: CGFloat = 48
     @State var replyHeight: CGFloat = 46
-    @Namespace var replyAnimation
     @State var reportType = "story"
     @State var reportId = ""
     @State var reportStoryId: String?
@@ -115,7 +114,8 @@ struct ContentView: View {
                     .accessibilityHidden(camp != nil || utility != nil || detailStory != nil || snapshotStory != nil || loginPrompt != nil)
                 if let chosen = camp {
                     comments(chosen,width:w,height:h,top:top,bottom:bottom).offset(x:-chosen.sign*w*(1-campProgress)).allowsHitTesting((campProgress>0.99 || axis == .returnFromComments || axis == .scrollComments) && !settling && axis != .openComments)
-                        .accessibilityHidden(campProgress < 0.99 || selectedReply != nil || utility == "report" || loginPrompt != nil)
+                        .opacity(Double(campProgress))
+                        .accessibilityHidden(settling || campProgress < 0.99 || selectedReply != nil || utility == "report" || loginPrompt != nil)
                         .zIndex(detailStory != nil ? 23:2)
                 }
                 companions(width:w,top:top,height:h).zIndex(28)
@@ -125,7 +125,7 @@ struct ContentView: View {
                 if let page = utility {
                     utilityPage(page,width:w,height:h,top:top,bottom:bottom).id(page).zIndex(page == "report" ? 30 : 10).transition(pageTransition(page))
                 }
-                if let answer = selectedReply { replyOverlay(answer,width:w,height:h,top:top,bottom:bottom).zIndex(29).transition(.identity) }
+                if let answer = selectedReply { replyOverlay(answer,width:w,height:h,top:top,bottom:bottom).zIndex(29).transition(.offset(y:12).combined(with:.opacity)) }
                 if let story = detailStory {
                     detailPage(story,width:w,height:h,top:top,bottom:bottom)
                         .accessibilityHidden(camp != nil || loginPrompt != nil || utility == "report")
@@ -622,7 +622,6 @@ struct ContentView: View {
                             motionOn:motionOn,dragLeft:max(0,base.x-40)/scale,dragRight:max(0,width-base.x-40)/scale,
                             dragUp:max(0,base.y-top-38)/scale,dragDown:max(0,height-base.y-38)/scale,
                             touchWidth:touchWidth,interactive:canTouch,context:mode,
-                            slide:axis == .feed || (settling && camp == nil) ? sin(verticalProgress * .pi)*verticalSign : 0,
                             moveWithFinger:move,cancelMove:writing ? { cancelWritingCompanionMove() } : nil)
             .scaleEffect(scale).position(position)
             .opacity(opacity)
@@ -766,8 +765,7 @@ struct ContentView: View {
         Button {
             guard let story = detailStory, camp == nil else { return }
             discussionID = story.id
-            camp = side
-            settleCamp(to: 1)
+            withAnimation(transitionAnimation){camp=side;campProgress=1}
         } label: {
             Color.clear.frame(width:48,height:64).contentShape(Rectangle())
         }
