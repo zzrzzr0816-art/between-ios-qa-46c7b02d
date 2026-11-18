@@ -866,7 +866,7 @@ private struct ReplyCardReveal: AnimatableModifier {
     }
 }
 
-private func fullCardReveal(from card: CGRect?,width: CGFloat,height: CGFloat,radius: CGFloat) -> AnyTransition {
+func fullCardReveal(from card: CGRect?,width: CGFloat,height: CGFloat,radius: CGFloat) -> AnyTransition {
     guard let card, !card.isEmpty else { return .opacity }
     let size = CGSize(width:width,height:height)
     return .modifier(
