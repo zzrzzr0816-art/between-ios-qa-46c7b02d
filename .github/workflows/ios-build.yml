@@ -17,5 +17,15 @@ jobs:
             cat tests/native-local-state.swift
           } > "$RUNNER_TEMP/between-local-state.swift"
           swift "$RUNNER_TEMP/between-local-state.swift"
+      - name: Run native feed regression checks
+        run: |
+          {
+            awk '/^enum BetweenAPI/ { copy=1 } copy { print } copy && /^}/ { exit }' Between/Auth.swift > "$RUNNER_TEMP/between-api-base.swift"
+            printf 'import Foundation\nimport SwiftUI\n'
+            cat "$RUNNER_TEMP/between-api-base.swift"
+            tail -n +2 Between/NativeModels.swift
+            cat tests/native-feed.swift
+          } > "$RUNNER_TEMP/between-native-feed.swift"
+          swift -swift-version 5 "$RUNNER_TEMP/between-native-feed.swift"
       - name: Build without code signing
         run: xcodebuild -project Between.xcodeproj -target Between -configuration Debug -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build
