@@ -155,7 +155,8 @@ final class AuthManager: ObservableObject {
     var userId: String? { account?.id }
 
     private var zh: Bool {
-        ProcessInfo.processInfo.arguments.contains("-ui-zh") || UserDefaults.standard.string(forKey: "native.language") == "zh"
+        if let language = UserDefaults.standard.string(forKey:"native.language") { return language == "zh" }
+        return ProcessInfo.processInfo.arguments.contains("-ui-zh")
     }
     private func t(_ a: String, _ b: String) -> String { zh ? a : b }
 

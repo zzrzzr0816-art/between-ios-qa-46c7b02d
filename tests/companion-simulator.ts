@@ -90,9 +90,9 @@ try {
     await delay(60);
     hid.touch('up', x, y);
   };
-  const tapLabel = async (label: string) => {
+  const tapLabel = async (label: string, contains = false) => {
     const nodes = flatten(JSON.parse(lastTree) as AxNode[]);
-    const frame = nodes.find(node => node.AXLabel === label && node.frame)?.frame;
+    const frame = nodes.find(node => node.frame && (contains ? node.AXLabel?.includes(label) : node.AXLabel === label))?.frame;
     if (!frame) throw new Error('Control not found: ' + label);
     await tap(frame.x + frame.width / 2, frame.y + frame.height / 2);
   };
@@ -119,16 +119,40 @@ try {
   for (const side of ['devil','angel']) {
     const direction = side === 'devil' ? -1 : 1;
     await swipe(width * 0.5, height * 0.51, direction * width * 0.39, 0);
-    await waitFor(side + ' discussion and selected role',
-      labels => labels.has('The conversation') && hasRole(labels,side) && !both(labels) && !labels.has('Post'));
+    await waitFor(side + ' discussion and both independent roles',
+      labels => labels.has('The conversation') && both(labels) && !labels.has('Post'));
     await tapTextArea();
-    await waitFor(side + ' discussion keyboard and visible role',
-      labels => labels.has('QA keyboard visible') && hasRole(labels,side));
-    screenshot(side + '-keyboard', [side]);
+    await waitFor(side + ' discussion keyboard and both roles',
+      labels => labels.has('QA keyboard visible') && both(labels));
+    screenshot(side + '-keyboard', ['angel','devil']);
     await tapLabel('Back');
     await waitFor(side + ' discussion closes and restores both roles',
       labels => both(labels) && !labels.has('QA keyboard visible') && !labels.has('The conversation'));
   }
+
+  await tapLabel('Me');
+  await waitFor('Profile keeps both companions', labels => [...labels].some(label => label.includes('My stories')) && both(labels));
+  screenshot('profile', ['angel','devil']);
+  await tapLabel('My stories', true);
+  await waitFor('My stories keeps both companions', labels => labels.has('My stories') && labels.has('Back') && both(labels));
+  screenshot('my-stories', ['angel','devil']);
+  await tapLabel('Close');
+  await waitFor('Profile return restores home without a feed gesture', labels => labels.has('1 / 3') && both(labels));
+  screenshot('home-after-profile', ['angel','devil']);
+
+  await swipe(width * 0.5, height * 0.51, -width * 0.39, 0);
+  await waitFor('Discussion ready to open a reply', labels => labels.has('Reply') && both(labels));
+  await tapLabel('Reply');
+  await waitFor('Reply card expands with both companions present', labels => labels.has('Back to comments') && both(labels));
+  await tapLabel('Back to comments');
+  await waitFor('Reply card closes back to discussion', labels => labels.has('The conversation') && !labels.has('Back to comments'));
+  await tapLabel('Back');
+  await waitFor('Home after dismissing reply', labels => labels.has('1 / 3') && both(labels));
+
+  await tapLabel('More');
+  await waitFor('More sheet is operable', labels => labels.has('Companion motion') && labels.has('Close'));
+  await tapLabel('Close');
+  await waitFor('Home after dismissing More', labels => labels.has('1 / 3') && both(labels));
 
   await tapLabel('Post');
   await waitFor('Write sheet and one role', labels =>

@@ -20,6 +20,7 @@ struct CompanionRig: View {
     var interactive = true
     var context: CompanionMode = .home
     var storyID: String?
+    var slide: CGFloat = 0
     var moveWithFinger: ((CGSize, Bool) -> Void)?
     var cancelMove: (() -> Void)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -83,6 +84,8 @@ struct CompanionRig: View {
                 .accessibilityAction { if interactive && motion && bridge.ready { bridge.run("buddyTap(0,0)") } }
         }
         .frame(width: 250, height: 250)
+        .offset(y: motion ? -sin(abs(slide) * .pi)*4 : 0)
+        .rotationEffect(.degrees(motion ? Double(slide)*(angel ? -4 : 4) : 0))
         .onAppear { bridge.update(script) }
         .onChange(of: script) { bridge.update($0) }
         .onChange(of: motion) { enabled in
@@ -521,7 +524,11 @@ let drag = null, tapHistory = { time: 0, streak: 0 };
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 window.__zh = true;
 
-window.setLang = function (zh) { window.__zh = !!zh; };
+window.setLang = function (zh) {
+  if (window.__zh !== !!zh) clearBuddyTap();
+  window.__zh = !!zh;
+  document.documentElement.lang = zh ? 'zh' : 'en';
+};
 window.setMotion = function (on) {
   document.documentElement.dataset.motion = on ? 'on' : 'off';
   if (!on) {

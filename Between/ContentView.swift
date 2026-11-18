@@ -43,7 +43,7 @@ struct ContentView: View {
     @State var replyText = ""
     @State var writeText = ""
     @State var updateText = ""
-    @FocusState var writingFocused: Bool
+    @State var writingFocused = false
     @State var writeFieldFocused = false
     @State var snapshots: [NativeStory] = []
     @State var reports: [String] = []
@@ -62,7 +62,7 @@ struct ContentView: View {
     @State var guideVisible = false
     @State var composerHeight: CGFloat = 48
     @State var replyHeight: CGFloat = 46
-    @State var likePulse: [String: Bool] = [:]
+    @Namespace var replyAnimation
     @State var reportType = "story"
     @State var reportId = ""
     @State var reportStoryId: String?
@@ -110,21 +110,21 @@ struct ContentView: View {
                     idleHints(width:w,height:h,bottom:bottom)
                     bottomNav(width:w,height:h,bottom:bottom)
                 }.frame(width:w,height:h)
+                    .blur(radius: reduceMotion || !motionOn ? 0 : 5*campProgress)
                     .accessibilityHidden(camp != nil || utility != nil || detailStory != nil || snapshotStory != nil || loginPrompt != nil)
                 if let chosen = camp {
-                    Color(hex:0x302532).opacity(0.12*Double(campProgress)).allowsHitTesting(false).zIndex(detailStory != nil ? 22.5:0.5)
                     comments(chosen,width:w,height:h,top:top,bottom:bottom).offset(x:-chosen.sign*w*(1-campProgress)).allowsHitTesting((campProgress>0.99 || axis == .returnFromComments || axis == .scrollComments) && !settling && axis != .openComments && axis != .detailHandle)
                         .accessibilityHidden(campProgress < 0.99 || selectedReply != nil || utility == "report" || loginPrompt != nil)
                         .zIndex(detailStory != nil ? 23:2)
                 }
-                companions(width:w,top:top,height:h).zIndex(companionsLayer)
+                companions(width:w,top:top,height:h).zIndex(28)
                 if utility != nil {
                     Color(hex:0x302532).opacity(0.40).zIndex(utility == "report" ? 29.5 : 5).contentShape(Rectangle()).onTapGesture{closeUtility()}.transition(.opacity)
                 }
                 if let page = utility {
                     utilityPage(page,width:w,height:h,top:top,bottom:bottom).id(page).zIndex(page == "report" ? 30 : 10).transition(pageTransition(page))
                 }
-                if let answer = selectedReply { replyOverlay(answer,width:w,height:h,top:top,bottom:bottom).zIndex(27).transition(.scale(scale:0.94,anchor:.bottomTrailing).combined(with:.opacity)) }
+                if let answer = selectedReply { replyOverlay(answer,width:w,height:h,top:top,bottom:bottom).zIndex(27).transition(.identity) }
                 if let story = detailStory { detailPage(story,width:w,height:h,top:top,bottom:bottom).zIndex(22).transition(.scale(scale:0.96).combined(with:.opacity)) }
                 if detailStory != nil {
                     detailHandles(width:w,height:h).zIndex(26)
@@ -141,7 +141,9 @@ struct ContentView: View {
                 #endif
                 if let text = toastText { toastView(text,bottom:bottom).zIndex(33) }
             }.frame(width:w,height:h).clipped().offset(y:-top)
-        }.ignoresSafeArea(.keyboard).foregroundColor(H5Design.ink).tint(H5Design.ink).buttonStyle(.plain)
+        }.ignoresSafeArea(.keyboard)
+            .background { H5Design.background.ignoresSafeArea() }
+            .foregroundColor(H5Design.ink).tint(H5Design.ink).buttonStyle(.plain)
             .task {
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("-ui-zh") { language = "zh" }
@@ -258,7 +260,6 @@ struct ContentView: View {
         writingFocused = false
         writeFieldFocused = false
         snapshotStory = nil
-        likePulse = [:]
         if resumingAction, previousDiscussion == nil || discussionStory != nil {
             detailStory = detailStory.flatMap { detail in model.stories.first { $0.id == detail.id } }
             selectedReply = discussionStory?.answers.first { $0.id == previousReply }
@@ -343,9 +344,9 @@ struct ContentView: View {
                     guard !settling, axis == nil else { return }
                     guard !model.loading else { return }
                     let requested = zh ? "en" : "zh"
+                    language = requested
                     Task {
                         if await model.load(requested) {
-                            language = requested
                             rebuildVisibleStories()
                         } else {
                             toast(l("语言切换失败，请重试","Couldn’t switch languages. Try again."))
@@ -553,9 +554,9 @@ struct ContentView: View {
             .onTapGesture {if interactive && axis == nil && !settling && camp == nil {openDetail(story)}}
     }
     func pageTransition(_ page:String)->AnyTransition {
-        page == "write" || page == "more"
-            ? .move(edge:.bottom).combined(with:.opacity)
-            : .opacity.combined(with:.scale(scale:0.985))
+        if page == "more" { return .offset(y:72).combined(with:.opacity) }
+        if page == "write" { return .move(edge:.bottom).combined(with:.opacity) }
+        return .opacity.combined(with:.scale(scale:0.985))
     }
     func openDetail(_ story:NativeStory){
         guard !model.loading, let i=model.stories.firstIndex(where:{$0.id==story.id}) else { return }
@@ -569,7 +570,7 @@ struct ContentView: View {
             && !composerFocused && !writingFocused && !writeFieldFocused && !replyFocused && !nicknameFocused
             && detailStory == nil && snapshotStory == nil && loginPrompt == nil && !nicknameMode && !guideVisible
             && (utility == nil || utility == "write" || mode == .library)
-        let place = CompanionPlacement(width:width,top:top,height:height,mode:mode,panelProgress:campProgress,fromDetail:detailStory != nil)
+        let place = CompanionPlacement(width:width,top:top,height:height,mode:mode,panelProgress:campProgress,fromDetail:detailStory != nil, keyboardOpen:keyboardHeight>0)
         return ZStack(alignment:.topLeading) {
             companion(.devil,placement:place,mode:mode,interactive:interactive,width:width,top:top,height:height,strong:strong)
             companion(.angel,placement:place,mode:mode,interactive:interactive,width:width,top:top,height:height,strong:strong)
@@ -585,10 +586,10 @@ struct ContentView: View {
         let resting = writing ? (writeBuddyPosition ?? base) : base
         let position = writing && keyboardHeight > 0
             ? CGPoint(x:width-93,y:H5Design.writeSheetTop(height:height,keyboard:keyboardHeight,safeTop:top)+34) : resting
-        let scale = companionScale(side,placement:placement) * (writing && keyboardHeight > 0 ? 0.82 : 1)
+        let scale: CGFloat = writing ? (keyboardHeight > 0 ? 0.77 : 0.87) : 1
         let parkedAtEdge = writing && writeBuddyPosition != nil && writeBuddyDragOrigin == nil
             && (resting.x <= 31 || resting.x >= width-31)
-        let touchWidth: CGFloat = parkedAtEdge ? 28 : mode == .library ? 38 : 67
+        let touchWidth: CGFloat = parkedAtEdge ? 28 : 67
         let touchOffset = parkedAtEdge ? (resting.x < width/2 ? -16 : 16)/scale : 0
         let canTouch = interactive && visible && motionOn && !reduceMotion
         let move: ((CGSize,Bool) -> Void)? = writing ? { delta, ended in
@@ -599,12 +600,14 @@ struct ContentView: View {
                             motionOn:motionOn,dragLeft:max(0,base.x-40)/scale,dragRight:max(0,width-base.x-40)/scale,
                             dragUp:max(0,base.y-top-38)/scale,dragDown:max(0,height-base.y-38)/scale,
                             touchWidth:touchWidth,touchOffsetX:touchOffset,interactive:canTouch,context:mode,
-                            storyID:discussionID ?? detailStory?.id ?? model.current?.id,moveWithFinger:move,cancelMove:writing ? { cancelWritingCompanionMove() } : nil)
+                            storyID:discussionID ?? detailStory?.id ?? model.current?.id,
+                            slide:axis == .feed || (settling && camp == nil) ? verticalProgress*verticalSign : (camp?.sign ?? 0)*campProgress,
+                            moveWithFinger:move,cancelMove:writing ? { cancelWritingCompanionMove() } : nil)
             .scaleEffect(scale).position(position)
-            .opacity(visible ? companionOpacity(side) : 0)
+            .opacity(visible ? 1 : 0)
             .allowsHitTesting(canTouch)
             .overlay(alignment:.topLeading) {
-                companionProbe(side,visible:visible && companionOpacity(side)>0.05)
+                companionProbe(side,visible:visible)
                     .position(position)
             }
     }
@@ -650,14 +653,6 @@ struct ContentView: View {
         #endif
     }
 
-    private func companionScale(_ side: NativeCamp, placement: CompanionPlacement) -> CGFloat {
-        let emphasis = camp == side ? H5Design.buddyCampScale*campProgress : 0
-        return placement.scale*(placement.buddyScale+emphasis)/H5Design.buddyBaseScale
-    }
-    private func companionOpacity(_ side: NativeCamp) -> Double {
-        camp != nil && camp != side ? Double(1-campProgress) : 1
-    }
-
     var companionMode:CompanionMode {
         if camp != nil { return .comments }
         if detailStory != nil { return .detail }
@@ -665,15 +660,6 @@ struct ContentView: View {
         if utility == "profile" { return .profile }
         if let u = utility, ["profile-stories","profile-answers","saved","activity"].contains(u) { return .library }
         return .home
-    }
-    var companionsLayer:Double {
-        if selectedReply != nil { return 28 }
-        if detailStory != nil { return 25 }
-        if utility == "write" { return 11 }
-        if utility == "more" || utility == "report" || utility == "update" { return 4 }
-        if utility != nil { return 11 }
-        if camp != nil { return 12 }
-        return 1
     }
     func bottomNav(width:CGFloat,height:CGFloat,bottom:CGFloat)->some View {
         HStack(spacing:0){navItem(l("烦恼","Stories"),icon:"house",active:true){goHome()};navItem(l("发布","Post"),icon:"plus",active:false){openWrite()};navItem(l("我的","Me"),icon:"person",active:false){
@@ -879,36 +865,27 @@ private struct CompanionPlacement:Equatable {
     var devilX:CGFloat = 63
     var angelX:CGFloat = 0
     var y:CGFloat = 0
-    var scale:CGFloat = 1
-    var buddyScale:CGFloat = 1.15
     var devilVisible = true
     var angelVisible = true
-    init(width:CGFloat,top:CGFloat,height:CGFloat,mode:CompanionMode,panelProgress:CGFloat,fromDetail:Bool) {
+    init(width:CGFloat,top:CGFloat,height:CGFloat,mode:CompanionMode,panelProgress:CGFloat,fromDetail:Bool,keyboardOpen:Bool) {
         switch mode {
         case .home:
             angelX = width-63
             y = top+137
         case .comments:
             angelX = width-63
-            y = top+137
+            y = top+(keyboardOpen ? 104 : 137)
             if fromDetail {
                 let remaining = 1-panelProgress
                 devilX -= 52*remaining
                 angelX += 52*remaining
                 y += (height*0.46+29-y)*remaining
             }
-        case .profile:
-            scale = 0.6
-            y = top+86
-            devilX = width/2-38
-            angelX = width/2+38
-        case .library:
-            scale = 0.53
-            y = top+33.4
-            devilX = width-51.5
-            angelX = width-31.4
+        case .profile, .library:
+            y = top+102
+            devilX = width/2-47
+            angelX = width/2+47
         case .write(let side):
-            buddyScale = 0.94
             y = max(top+34,height*0.12-16)
             devilX = 61
             angelX = width-61
