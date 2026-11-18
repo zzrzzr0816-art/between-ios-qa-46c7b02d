@@ -42,7 +42,7 @@ for offset in stride(from: 0, to: pixels.count, by: 4) {
     let blue = Int(pixels[offset + 2])
     let dr = red - target.0, dg = green - target.1, db = blue - target.2
     if dr * dr + dg * dg + db * db < 28 * 28 { match += 1 }
-    if max(red, green, blue) < 150 { faceDetails += 1 }
+    if max(red, green, blue) < 160 { faceDetails += 1 }
 }
 guard match > pixelCount / 8, faceDetails > pixelCount / 150 else {
     fatalError("No recognizable \(args[8]) companion at \(region)")
