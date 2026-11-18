@@ -29,8 +29,8 @@ extension ContentView {
             }
             HStack(spacing:9){
                 ZStack(alignment:.topLeading){
-                    if composer.isEmpty { Text(l("说点什么…","Say something kind…")).font(.system(size:16)).foregroundColor(Color(hex:0xb3a5a0)).padding(.leading,13).padding(.top,13).allowsHitTesting(false) }
-                    GrowField(text:$composer,height:$composerHeight,focused:$composerFocused)
+                    GrowField(text:$composer,height:$composerHeight,focused:$composerFocused,
+                              prompt:l("说点什么…","Say something kind…"))
                 }.frame(height:composerHeight).background(Color(hex:0xf7f4f1),in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xeee8e4),lineWidth:1))
                 Button {sendPreview(chosen)} label:{HStack(spacing:4){Text(l("发送","Send"));Text("↑")}.font(.system(size:15,weight:.bold)).foregroundColor(.white).padding(.horizontal,16).frame(minHeight:44).background(Color(hex:chosen == .devil ? 0xc6786d:0x628fa9),in:RoundedRectangle(cornerRadius:16))}.buttonStyle(PressScale())
             }.padding(.horizontal,16).padding(.top,8).padding(.bottom,keyboardHeight > 0 ? 8 : bottom+10)
@@ -178,9 +178,9 @@ extension ContentView {
                         HStack(spacing:5){Text("✦");Text(l("匿名发布","Anonymous"))}.font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0xa8737a)).padding(.horizontal,11).padding(.vertical,6).background(Color(hex:0xf7e6e0),in:Capsule())
                         Spacer()
                     }
-                    GrowField(text:$writeText,height:.constant(146),focused:$writeFieldFocused,maxHeight:146,label:l("烦恼正文","Story text"))
+                    GrowField(text:$writeText,height:.constant(146),focused:$writeFieldFocused,maxHeight:146,
+                              label:l("烦恼正文","Story text"),prompt:l("最近有什么让你纠结的事？","What's been on your mind lately?"))
                         .frame(height:146,alignment:.topLeading).background(Color(hex:0xf7f1ee),in:RoundedRectangle(cornerRadius:17)).overlay(RoundedRectangle(cornerRadius:17).stroke(Color(hex:0xf0e7e2),lineWidth:1)).padding(.top,10)
-                        .overlay(alignment:.topLeading){ if writeText.isEmpty { Text(l("最近有什么让你纠结的事？","What's been on your mind lately?")).font(.system(size:16)).foregroundColor(Color(hex:0xb3a5a0)).padding(.leading,12).padding(.top,13).allowsHitTesting(false) } }
                     HStack{
                         Text(l("说你想说的","In your own words"))
                         Spacer()
@@ -208,12 +208,15 @@ extension ContentView {
     }
     func morePage(width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
         let available = max(1,height-top-bottom-20)
-        let rows = model.current == nil ? 1 : 4
+        let rows = (model.current == nil ? 1 : 4)+(showingTestStories ? 1 : 0)
         let bodyHeight = min(CGFloat(rows*56+max(0,rows-1)*8),max(1,available-66))
         return VStack(alignment:.leading,spacing:4){
             sheetHead(l("更多","More"),top:0,padBottom:4)
             ScrollView {
             VStack(spacing:8){
+                if showingTestStories {
+                    moreRow(l("退出测试烦恼","Exit test stories")) { endTestStories() }
+                }
                 if model.current != nil {
                     moreRow("♡ "+l("保存完整讨论","Save discussion")){saveSnapshot()}
                 }
@@ -326,16 +329,10 @@ extension ContentView {
             }.padding(.horizontal,16).padding(.top,top+12).padding(.bottom,14)
             ScrollView {
                 VStack(spacing:12) {
-                    GrowField(text:$updateText,height:.constant(150),focused:$writingFocused,maxHeight:150,label:l("进展正文","Update text"))
+                    GrowField(text:$updateText,height:.constant(150),focused:$writingFocused,maxHeight:150,
+                              label:l("进展正文","Update text"),prompt:l("后来怎么样了？","What happened next?"))
                         .frame(height:150).background(Color(hex:0xf7f1ee),in:RoundedRectangle(cornerRadius:17))
                         .overlay(RoundedRectangle(cornerRadius:17).stroke(Color(hex:0xf0e7e2),lineWidth:1))
-                        .overlay(alignment:.topLeading) {
-                            if updateText.isEmpty {
-                                Text(l("后来怎么样了？","What happened next?")).font(.system(size:16))
-                                    .foregroundColor(Color(hex:0xb3a5a0)).padding(.leading,12).padding(.top,13)
-                                    .allowsHitTesting(false)
-                            }
-                        }
                     Button {saveUpdate()} label:{
                         Text(l("保存进展","Save update")).font(.system(size:15,weight:.bold)).foregroundColor(.white)
                             .frame(maxWidth:.infinity,minHeight:46).background(Color(hex:0xc8786d),in:RoundedRectangle(cornerRadius:14))
@@ -436,8 +433,7 @@ extension ContentView {
             HStack{
                 Text(l("我的","Me")).font(.system(size:19,weight:.bold)).foregroundColor(Color(hex:0x302b32))
                 Spacer()
-                Button {withAnimation(transitionAnimation){utility=nil}} label:{Text("‹").font(.system(size:32,weight:.light)).foregroundColor(Color(hex:0x75666d)).frame(width:44,height:44)}.accessibilityLabel(l("关闭","Close"))
-            }.padding(.horizontal,16).padding(.top,top+12).padding(.bottom,64)
+            }.frame(height:44).padding(.horizontal,16).padding(.top,top+8)
             ScrollView {
                 VStack(alignment:.leading,spacing:0){
                     accountSection.padding(.top,8)
@@ -756,8 +752,8 @@ extension ContentView {
                     Text("↳ \(l("回复","Reply")) \(answer.author)  ·  \(l("匿名","anonymous"))").font(.system(size:11)).foregroundColor(Color(hex:0x9b8f8b)).frame(maxWidth:.infinity,alignment:.leading).padding(.bottom,8)
                     HStack(spacing:9){
                         ZStack(alignment:.topLeading){
-                            if replyText.isEmpty { Text(l("写下回复…","Write a reply…")).font(.system(size:16)).foregroundColor(Color(hex:0xb3a5a0)).padding(.leading,13).padding(.top,13).allowsHitTesting(false) }
-                            GrowField(text:$replyText,height:$replyHeight,focused:$replyFocused,maxHeight:104)
+                            GrowField(text:$replyText,height:$replyHeight,focused:$replyFocused,maxHeight:104,
+                                      prompt:l("写下回复…","Write a reply…"))
                         }.frame(height:replyHeight).background(Color(hex:0xf7f4f1),in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xeee8e4),lineWidth:1))
                         Button {appendReply(answer)} label:{HStack(spacing:4){Text(l("发送","Send"));Text("↑")}.font(.system(size:13,weight:.bold)).foregroundColor(.white).padding(.horizontal,13).frame(minWidth:74,minHeight:46).background(accent,in:RoundedRectangle(cornerRadius:15))}.buttonStyle(PressScale())
                     }
@@ -774,28 +770,34 @@ struct GrowField:UIViewRepresentable {
     @Binding var focused:Bool
     var maxHeight:CGFloat = 112
     var label: String?
-    func makeUIView(context:Context)->UITextView {
-        let v=UITextView()
+    var prompt: String?
+    func makeUIView(context:Context)->PromptTextView {
+        let v=PromptTextView(frame:.zero,textContainer:nil)
         v.backgroundColor = .clear
         v.font = .systemFont(ofSize:16)
+        v.textColor = UIColor(red:0.19,green:0.16,blue:0.19,alpha:1)
+        v.tintColor = UIColor(red:0.57,green:0.30,blue:0.31,alpha:1)
+        v.prompt = prompt
         v.textContainerInset = UIEdgeInsets(top:13,left:8,bottom:13,right:8)
         v.textContainer.lineFragmentPadding = 4
         v.isScrollEnabled = false
         v.delegate = context.coordinator
         v.text = text
-        v.accessibilityLabel = label
+        v.accessibilityLabel = label ?? prompt
         v.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
         return v
     }
-    func updateUIView(_ v:UITextView,context:Context){
+    func updateUIView(_ v:PromptTextView,context:Context){
         context.coordinator.parent = self
-        v.accessibilityLabel = label
+        v.accessibilityLabel = label ?? prompt
+        v.prompt = prompt
         if v.markedTextRange == nil && v.text != text { v.text = text }
         if focused && !v.isFirstResponder { v.becomeFirstResponder() }
         if !focused && v.isFirstResponder { v.resignFirstResponder() }
+        v.updatePromptVisibility()
         measure(v)
     }
-    static func dismantleUIView(_ view: UITextView, coordinator: Coordinator) {
+    static func dismantleUIView(_ view: PromptTextView, coordinator: Coordinator) {
         view.delegate = nil
     }
     func makeCoordinator()->Coordinator { Coordinator(self) }
@@ -810,9 +812,51 @@ struct GrowField:UIViewRepresentable {
     final class Coordinator:NSObject,UITextViewDelegate {
         var parent:GrowField
         init(_ p:GrowField){parent=p}
-        func textViewDidChange(_ tv:UITextView){parent.text=tv.text;parent.measure(tv)}
+        func textViewDidChange(_ tv:UITextView){
+            (tv as? PromptTextView)?.updatePromptVisibility()
+            parent.text=tv.text
+            parent.measure(tv)
+        }
         func textViewDidBeginEditing(_ tv:UITextView){parent.focused=true}
         func textViewDidEndEditing(_ tv:UITextView){parent.focused=false}
+    }
+}
+final class PromptTextView: UITextView {
+    private let promptLabel = UILabel()
+    var prompt: String? {
+        didSet {
+            guard oldValue != prompt else { return }
+            promptLabel.text = prompt
+            updatePromptVisibility()
+        }
+    }
+
+    override init(frame: CGRect, textContainer: NSTextContainer?) {
+        super.init(frame:frame,textContainer:textContainer)
+        promptLabel.numberOfLines = 0
+        promptLabel.textColor = UIColor(red:0.47,green:0.40,blue:0.41,alpha:1)
+        promptLabel.isUserInteractionEnabled = false
+        promptLabel.isAccessibilityElement = false
+        addSubview(promptLabel)
+    }
+
+    required init?(coder: NSCoder) { super.init(coder:coder) }
+
+    func updatePromptVisibility() {
+        promptLabel.isHidden = !(text ?? "").isEmpty || prompt?.isEmpty != false
+        setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard !promptLabel.isHidden else { return }
+        promptLabel.font = font
+        let caret = caretRect(for:beginningOfDocument)
+        let inset = textContainerInset
+        let x = inset.left+textContainer.lineFragmentPadding
+        let width = max(1,bounds.width-x-inset.right-textContainer.lineFragmentPadding)
+        let size = promptLabel.sizeThatFits(CGSize(width:width,height:CGFloat.greatestFiniteMagnitude))
+        promptLabel.frame = CGRect(x:x,y:caret.isEmpty ? inset.top : caret.minY,width:width,height:size.height)
     }
 }
 private struct TopRoundedShape:Shape {

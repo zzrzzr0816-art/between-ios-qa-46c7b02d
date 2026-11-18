@@ -294,16 +294,28 @@ enum NativeCamp: String {
         return try JSONDecoder().decode(NativeFeed.self,from:data)
     }
 
-    static func fixtures(_ language:String) -> [NativeStory] {
+    static func fixtures(_ language:String,created:Double = Date().timeIntervalSince1970*1000) -> [NativeStory] {
         let zh = language == "zh"
-        let titles = zh ? ["最好的朋友要搬去另一座城市了。我该告诉他，我其实很难过吗？","毕业后大家好像都有方向，只有我还不知道自己想过什么样的生活。","如果一个选择没有标准答案，我到底该听理智的，还是听自己的？"] : ["My best friend is moving away. Do I tell them how much it hurts?","Everyone seems to have a plan after graduation. I still have no idea what kind of life I want.","When there is no right answer, do I trust my head or follow what I actually want?"]
+        let titles = zh ? ["最好的朋友要搬去另一座城市了。我该告诉他，我其实很难过吗？","毕业后大家好像都有方向，只有我还不知道自己想过什么样的生活。","如果一个选择没有标准答案，我到底该听理智的，还是听自己的？","朋友每次约见面都迟到。我该直接告诉他这让我不舒服吗？","我想给自己放个周末，做家务和回消息却一直占满时间。我应该从哪件事开始拒绝？"] : ["My best friend is moving away. Do I tell them how much it hurts?","Everyone seems to have a plan after graduation. I still have no idea what kind of life I want.","When there is no right answer, do I trust my head or follow what I actually want?","My friend is always late when we meet. Should I tell them how it makes me feel?","I want one weekend to rest, but chores and messages always fill it. Where do I start saying no?"]
         return titles.enumerated().map { i,text in
             var answers = [
                 NativeAnswer(id:"a\(i)",author:zh ? "小满":"Mia",side:"angel",text:zh ? "可以告诉他你会想念他，也约定下次见面的时间。难过和为他开心可以同时存在。":"Tell them you will miss them, and make a plan to stay close. You can be happy for them and sad about the distance at the same time.",likes:2,replies:[]),
                 NativeAnswer(id:"d\(i)",author:zh ? "阿岸":"Rowan",side:"devil",text:zh ? "想说就说。装作没事并不会让告别好过一点，别等人走了才把真心话发给聊天框。":"Say it now. Pretending you are fine will not make the goodbye easier. Do not save the honest part for a message after they have already left.",likes:1,replies:[])
             ]
+            if i >= 3 {
+                let angel = i == 3
+                    ? (zh ? "选个不赶时间的时候，说清楚你在意的是一直等，可以一起约一个更现实的时间。" : "Pick a quiet moment. Explain that waiting is hard for you, then agree on a time that works for both of you.")
+                    : (zh ? "先留出两小时给自己，再决定哪些消息可以等到周一回。" : "Block out two hours for yourself, then pick which messages can wait until Monday.")
+                let devil = i == 3
+                    ? (zh ? "直接说下次只等十五分钟，之后就按自己的安排走。" : "Say you'll wait fifteen minutes next time, then go ahead with your own plans.")
+                    : (zh ? "从关掉一个群的提醒开始。有些事不在周末做，也不会出什么问题。" : "Mute one group chat. Some things can sit untouched until the weekend is over.")
+                answers = [
+                    NativeAnswer(id:"a\(i)",author:zh ? "小满":"Mia",side:"angel",text:angel,likes:0,replies:[]),
+                    NativeAnswer(id:"d\(i)",author:zh ? "阿岸":"Rowan",side:"devil",text:devil,likes:0,replies:[])
+                ]
+            }
             if i == 1 { answers.append(NativeAnswer(id:"extra-devil",author:zh ? "青禾":"June",side:"devil",text:zh ? "先试一件你真的好奇的事。别人有计划不代表你必须照着走。":"Try one thing you are actually curious about. Someone else's plan does not have to become your deadline.",likes:0,replies:[])) }
-            return NativeStory(id:"fixture-\(i)",text:text,created:Date().timeIntervalSince1970*1000,answers:answers)
+            return NativeStory(id:"fixture-\(i)",text:text,created:created,answers:answers)
         }
     }
 }

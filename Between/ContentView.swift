@@ -17,6 +17,8 @@ struct ContentView: View {
     @State var axis: PageDrag?
     @State var verticalTarget: String?
     @State private var pendingFeedRefresh = false
+    @State private var testStoriesCreated: Double?
+    var showingTestStories: Bool { testStoriesCreated != nil }
     @State private var transitionRevision = 0
     @State var verticalProgress: CGFloat = 0
     @State var verticalSign: CGFloat = -1
@@ -274,7 +276,7 @@ struct ContentView: View {
         }
     }
     func loadNextStories() async {
-        if await model.loadNext() {
+        if !showingTestStories, await model.loadNext() {
             pendingFeedRefresh = true
             applyPendingFeedRefresh()
         }
@@ -303,10 +305,16 @@ struct ContentView: View {
             toast(l("部分本地数据无法读取，已保留备份","Some local data couldn’t be read. A backup was kept."))
         }
     }
+    func endTestStories() {
+        testStoriesCreated = nil
+        rebuildVisibleStories()
+        closeUtility()
+    }
     func rebuildVisibleStories() {
         let previous = model.current?.id
         let now = Date().timeIntervalSince1970
-        let (visible, changed) = localState.visibleStories(merging: model.sourceStories, at: now)
+        let source = testStoriesCreated.map { NativeFeedModel.fixtures(language,created:$0) } ?? model.sourceStories
+        let (visible, changed) = localState.visibleStories(merging:source,at:now)
         model.stories = visible
         model.index = previous.flatMap { id in visible.firstIndex { $0.id == id } }
             ?? min(model.index,max(0,visible.count-1))
@@ -342,6 +350,7 @@ struct ContentView: View {
                     guard !model.loading else { return }
                     let requested = zh ? "en" : "zh"
                     language = requested
+                    if showingTestStories { rebuildVisibleStories(); return }
                     Task {
                         if await model.load(requested) {
                             rebuildVisibleStories()
@@ -391,6 +400,13 @@ struct ContentView: View {
                         Button(l("重试","Retry")) { Task { if await model.load(language) { rebuildVisibleStories() } } }
                     } else if model.nextOffset != nil {
                         Button(model.pageError ? l("重试加载","Retry loading") : l("继续加载","Load more")) { Task { await loadNextStories() } }
+                    }
+                    if !model.loadingMore && !showingTestStories {
+                        Button(l("载入 5 条测试烦恼","Load 5 test stories")) {
+                            testStoriesCreated = Date().timeIntervalSince1970*1000
+                            rebuildVisibleStories()
+                        }
+                        .font(.system(size:13,weight:.semibold))
                     }
                 }.padding(30).background(H5Design.card,in:RoundedRectangle(cornerRadius:30))
             }
@@ -458,7 +474,7 @@ struct ContentView: View {
             settleFeed(to: commit ? next.id : nil, releaseBoost: max(0,prediction-distance)/max(1,travel))
         } else {
             if value.translation.height < -55, model.index >= model.stories.count-1 {
-                if model.nextOffset != nil || model.loadingMore {
+                if !showingTestStories && (model.nextOffset != nil || model.loadingMore) {
                     Task { await loadNextStories() }
                 } else {
                     toast(l("这是最后一条啦","You’re all caught up"))
@@ -757,6 +773,7 @@ struct ContentView: View {
         var pruned = localState
         guard pruned.prune(at: now, expiredStoryIDs: expired) else { return }
         localState = pruned
+        if let created = testStoriesCreated, created/1000+86400 <= now { testStoriesCreated = nil }
         snapshots = localState.snapshots
         hidden = localState.hidden
         liked = localState.liked
@@ -876,7 +893,11 @@ private struct CompanionPlacement:Equatable {
                 angelX += 52*remaining
                 y += (height*0.46+29-y)*remaining
             }
-        case .profile, .library:
+        case .profile:
+            y = top+30
+            devilX = width-64
+            angelX = width-32
+        case .library:
             y = top+43
             devilX = width-133
             angelX = width-101

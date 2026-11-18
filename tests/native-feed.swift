@@ -45,6 +45,11 @@ final class FeedStub: URLProtocol {
     precondition(feed.sourceStories.map(\.id) == ["first","next"])
     precondition(FeedStub.requests == ["en:0","zh:0","en:10","en:20","en:20"])
     precondition(NativeStory(id:"future",text:"future",created:Double.greatestFiniteMagnitude,answers:[]).hoursRemaining() == 24)
+    for language in ["zh","en"] {
+        let fixtures = NativeFeedModel.fixtures(language,created:123_456)
+        precondition(fixtures.count == 5 && Set(fixtures.map(\.id)).count == 5)
+        precondition(fixtures.allSatisfy { $0.created == 123_456 && Set($0.answers.map(\.side)) == ["angel","devil"] })
+    }
     print("Feed regression passed: deduplication, empty pages, failed language switch, retry and cursor")
 }
 await verify()

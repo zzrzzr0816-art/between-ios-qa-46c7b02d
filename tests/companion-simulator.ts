@@ -61,7 +61,7 @@ try {
     return labels.has('QA ' + side + ' companion');
   }
   const both = (labels: Set<string>) => hasRole(labels, 'devil') && hasRole(labels, 'angel');
-  await waitFor('Initial story and both roles', labels => labels.has('1 / 3') && both(labels));
+  await waitFor('Initial story and both roles', labels => labels.has('1 / 5') && both(labels));
   const { width, height } = await client.uiSize() ?? (await client.describe()).screen;
 
   function screenshot(name: string, roles: string[]) {
@@ -106,10 +106,10 @@ try {
     await tap(frame.x + frame.width / 2, frame.y + frame.height / 2);
   };
 
-  for (const [index, direction] of [[2,-1],[3,-1],[2,1],[1,1]]) {
+  for (const [index, direction] of [[2,-1],[3,-1],[4,-1],[5,-1],[4,1],[3,1],[2,1],[1,1]]) {
     await swipe(width * 0.5, height * 0.55, 0, direction * height * 0.24);
     await waitFor('Continuous feed gesture to ' + index,
-      labels => labels.has(index + ' / 3') && both(labels));
+      labels => labels.has(index + ' / 5') && both(labels));
     await delay(160);
   }
   await swipe(width * 0.5, height * 0.51, -width * 0.12, 0);
@@ -133,13 +133,13 @@ try {
   }
 
   await tapLabel('Me');
-  await waitFor('Profile keeps both companions', labels => [...labels].some(label => label.includes('My stories')) && both(labels));
+  await waitFor('Profile keeps both companions', labels => [...labels].some(label => label.includes('My stories')) && !labels.has('Close') && labels.has('Stories') && both(labels));
   screenshot('profile', ['angel','devil']);
   await tapLabel('My stories', true);
   await waitFor('My stories keeps both companions', labels => labels.has('My stories') && labels.has('Back') && labels.has('Stories') && both(labels));
   screenshot('my-stories', ['angel','devil']);
   await tapLabel('Close');
-  await waitFor('Profile return restores home without a feed gesture', labels => labels.has('1 / 3') && labels.has('Me') && both(labels));
+  await waitFor('Profile return restores home without a feed gesture', labels => labels.has('1 / 5') && labels.has('Me') && both(labels));
   screenshot('home-after-profile', ['angel','devil']);
 
   await tapLabel('My best friend is moving away. Do I tell them how much it hurts?');
@@ -148,7 +148,7 @@ try {
   await delay(400);
   await waitFor('Story detail horizontal swipe stays on detail', labels => labels.has('View angel responses') && !labels.has('The conversation'));
   await tapLabel('Back');
-  await waitFor('Home after closing story detail', labels => labels.has('1 / 3') && both(labels));
+  await waitFor('Home after closing story detail', labels => labels.has('1 / 5') && both(labels));
   await swipe(width * 0.5, height * 0.51, -width * 0.39, 0);
   await waitFor('Discussion ready to open a reply', labels => labels.has('Reply') && hasRole(labels,'angel'));
   await tapLabel('Reply');
@@ -156,12 +156,12 @@ try {
   await tapLabel('Back to comments');
   await waitFor('Reply card closes back to discussion', labels => labels.has('The conversation') && !labels.has('Back to comments'));
   await tapLabel('Back');
-  await waitFor('Home after dismissing reply', labels => labels.has('1 / 3') && both(labels));
+  await waitFor('Home after dismissing reply', labels => labels.has('1 / 5') && both(labels));
 
   await tapLabel('More');
   await waitFor('More sheet is operable', labels => labels.has('Companion motion') && labels.has('Close'));
   await tapLabel('Close');
-  await waitFor('Home after dismissing More', labels => labels.has('1 / 3') && both(labels));
+  await waitFor('Home after dismissing More', labels => labels.has('1 / 5') && both(labels));
 
   await tapLabel('Post');
   await waitFor('Write sheet and one role', labels =>
@@ -173,7 +173,7 @@ try {
   screenshot('write-keyboard', [writeRole]);
   await tapLabel('Close');
   await waitFor('Closing write sheet restores home and both roles',
-    labels => both(labels) && !labels.has('QA keyboard visible') && labels.has('1 / 3'));
+    labels => both(labels) && !labels.has('QA keyboard visible') && labels.has('1 / 5'));
   screenshot('home-after-keyboard', ['angel','devil']);
 } catch (error) {
   writeFileSync(join(evidence, 'last-accessibility.json'), lastTree);
