@@ -126,7 +126,12 @@ struct ContentView: View {
                     utilityPage(page,width:w,height:h,top:top,bottom:bottom).id(page).zIndex(page == "report" ? 30 : 10).transition(pageTransition(page))
                 }
                 if let answer = selectedReply { replyOverlay(answer,width:w,height:h,top:top,bottom:bottom).zIndex(29).transition(.identity) }
-                if let story = detailStory { detailPage(story,width:w,height:h,top:top,bottom:bottom).zIndex(22).transition(storyContentTransition(story,width:w,height:h)) }
+                if let story = detailStory {
+                    detailPage(story,width:w,height:h,top:top,bottom:bottom)
+                        .accessibilityHidden(camp != nil || loginPrompt != nil || utility == "report")
+                        .zIndex(22)
+                        .transition(storyContentTransition(story,width:w,height:h))
+                }
                 if detailStory != nil && camp == nil {
                     detailHandles(width:w,height:h).zIndex(26)
                         .allowsHitTesting(utility != "report" && !settling)

@@ -758,10 +758,11 @@ extension ContentView {
                     }.padding(.horizontal,12).padding(.bottom,14)
                 }
                 HStack(spacing:9){
-                        ZStack(alignment:.topLeading){
-                            GrowField(text:$replyText,height:$replyHeight,focused:$replyFocused,maxHeight:104,
-                                      prompt:l("写下回复…","Write a reply…"),returnKey:.send,submit:{appendReply(answer)})
-                        }.frame(height:replyHeight).background(Color(hex:0xf7f4f1),in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xeee8e4),lineWidth:1))
+                    GrowField(text:$replyText,height:$replyHeight,focused:$replyFocused,maxHeight:104,
+                              prompt:l("写下回复…","Write a reply…"),returnKey:.send,submit:{appendReply(answer)})
+                        .frame(height:replyHeight)
+                        .background(Color(hex:0xf7f4f1),in:RoundedRectangle(cornerRadius:16))
+                        .overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xeee8e4),lineWidth:1))
                     Button {appendReply(answer)} label:{
                         Image(systemName:"arrow.up").font(.system(size:16,weight:.semibold))
                             .foregroundColor(.white).frame(width:44,height:44)
