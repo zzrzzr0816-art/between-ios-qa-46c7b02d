@@ -494,7 +494,7 @@ extension ContentView {
         let key = localKey
         Task {
             if await auth.deleteAccount() {
-                UserDefaults.standard.removeObject(forKey:key)
+                NativeLocalStorage.remove(from:.standard,key:key)
                 reloadLocalForAccount()
                 withAnimation(transitionAnimation){utility=nil;nicknameMode=false}
                 toast(l("账号已删除","Account deleted"))

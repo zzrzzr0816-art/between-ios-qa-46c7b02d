@@ -282,8 +282,8 @@ struct ContentView: View {
     }
     func restoreLocal() {
         let store = UserDefaults.standard
-        let data = store.data(forKey:localKey) ?? (auth.account == nil && !auth.isPreview ? store.data(forKey:"native.local.v1") : nil)
-        localState = data.flatMap { try? JSONDecoder().decode(NativeLocalState.self,from:$0) } ?? NativeLocalState()
+        let restored = NativeLocalStorage.load(from:store,key:localKey,useLegacyGuest:auth.account == nil && !auth.isPreview)
+        localState = restored.state
         let migrated = localState.migrateLocalStories()
         let pruned = localState.prune(at: Date().timeIntervalSince1970)
         snapshots = localState.snapshots
@@ -295,6 +295,9 @@ struct ContentView: View {
         reviewed = localState.reviewed ?? []
         rebuildVisibleStories()
         if migrated || pruned { persistLocal() }
+        if restored.recoveredUnreadableData {
+            toast(l("部分本地数据无法读取，已保留备份","Some local data couldn’t be read. A backup was kept."))
+        }
     }
     func rebuildVisibleStories() {
         let previous = model.current?.id

@@ -71,7 +71,35 @@ func checkLegacyAndExpiry() throws {
     precondition(!state.prune(at: now))
 }
 
+func checkCorruptStorageRecovery() throws {
+    let suite = "between-qa-" + UUID().uuidString
+    guard let store = UserDefaults(suiteName:suite) else { preconditionFailure("Test storage unavailable") }
+    defer { store.removePersistentDomain(forName:suite) }
+    let key = "guest-v2"
+    let unreadable = Data([0xff,0x00,0xab])
+    store.set(unreadable,forKey:key)
+    var legacy = NativeLocalState()
+    legacy.localStories = [story("local-v1")]
+    store.set(try JSONEncoder().encode(legacy),forKey:NativeLocalStorage.legacyGuestKey)
+    let restored = NativeLocalStorage.load(from:store,key:key,useLegacyGuest:true,now:now)
+    precondition(restored.recoveredUnreadableData && restored.state.localStories.first?.id == "local-v1")
+    precondition(store.data(forKey:NativeLocalStorage.legacyGuestKey) == nil)
+    precondition(store.data(forKey:key+".recovery") != nil)
+    let reread = NativeLocalStorage.load(from:store,key:key,useLegacyGuest:false,now:now+86401)
+    precondition(!reread.recoveredUnreadableData && reread.state.localStories.first?.id == "local-v1")
+    precondition(store.data(forKey:key+".recovery") == nil)
+    NativeLocalStorage.remove(from:store,key:key)
+    precondition(store.data(forKey:key) == nil)
+    store.set(unreadable,forKey:key)
+    let empty = NativeLocalStorage.load(from:store,key:key,useLegacyGuest:false,now:now)
+    precondition(empty.recoveredUnreadableData && empty.state.localStories.isEmpty)
+    precondition(store.data(forKey:key) == nil && store.data(forKey:key+".recovery") != nil)
+    NativeLocalStorage.remove(from:store,key:key)
+    precondition(store.data(forKey:key+".recovery") == nil)
+}
+
 try checkPersistence()
 checkOwnership()
 try checkLegacyAndExpiry()
+try checkCorruptStorageRecovery()
 print("Native local state regression checks passed")

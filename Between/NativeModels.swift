@@ -146,6 +146,50 @@ struct NativeLocalState: Codable {
         return true
     }
 }
+enum NativeLocalStorage {
+    static let legacyGuestKey = "native.local.v1"
+    private static let recoverySuffix = ".recovery"
+    private struct Recovery: Codable {
+        let bytes: Data
+        let created: Double
+    }
+
+    static func load(from store: UserDefaults, key: String, useLegacyGuest: Bool,
+                     now: Double = Date().timeIntervalSince1970) -> (state: NativeLocalState, recoveredUnreadableData: Bool) {
+        let recoveryKey = key + recoverySuffix
+        if let blob = store.data(forKey:recoveryKey),
+           let archive = try? JSONDecoder().decode(Recovery.self,from:blob),
+           now-archive.created >= 86400 {
+            store.removeObject(forKey:recoveryKey)
+        }
+        let current = store.data(forKey:key)
+        if let current, let state = try? JSONDecoder().decode(NativeLocalState.self,from:current) {
+            return (state,false)
+        }
+        let legacy = useLegacyGuest ? store.data(forKey:legacyGuestKey) : nil
+        if let unreadable = current ?? legacy,
+           (try? JSONDecoder().decode(NativeLocalState.self,from:unreadable)) == nil,
+           store.data(forKey:recoveryKey) == nil,
+           let archive = try? JSONEncoder().encode(Recovery(bytes:unreadable,created:now)) {
+            store.set(archive,forKey:recoveryKey)
+            if store.data(forKey:recoveryKey) == archive {
+                store.removeObject(forKey:current == nil ? legacyGuestKey : key)
+            }
+        }
+        if let legacy, let state = try? JSONDecoder().decode(NativeLocalState.self,from:legacy) {
+            store.set(legacy,forKey:key)
+            if store.data(forKey:key) == legacy { store.removeObject(forKey:legacyGuestKey) }
+            return (state,current != nil)
+        }
+        return (NativeLocalState(),current != nil || legacy != nil)
+    }
+
+    static func remove(from store: UserDefaults, key: String) {
+        store.removeObject(forKey:key)
+        store.removeObject(forKey:key+recoverySuffix)
+    }
+}
+
 struct NativeFeed: Decodable { let stories: [NativeStory]; let next_offset: Int? }
 enum NativeCamp: String {
     case devil, angel
