@@ -17,7 +17,7 @@ on:
       open_viewer:
         description: Keep the interactive simulator available after checks
         type: boolean
-        default: true
+        default: false
 permissions:
   contents: read
 jobs:
@@ -39,8 +39,23 @@ jobs:
         with:
           working_directory: ${{ runner.temp }}/sim-remote
           experimental: true
+      - name: Set up simulator dependencies
+        if: inputs.companion_check || inputs.open_viewer
+        timeout-minutes: 6
+        working-directory: ${{ runner.temp }}/sim-remote
+        run: |
+          mise run install
+          mise run build
+      - name: Boot iPhone simulator
+        if: inputs.companion_check || inputs.open_viewer
+        timeout-minutes: 6
+        working-directory: ${{ runner.temp }}/sim-remote
+        run: |
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool NO
+          ./scripts/boot-sim.sh
       - name: Run native companion interaction checks
         if: inputs.companion_check
+        timeout-minutes: 5
         working-directory: ${{ runner.temp }}/sim-remote
         env:
           BETWEEN_APP: ${{ runner.temp }}/between-build/Between.app
@@ -48,10 +63,6 @@ jobs:
           BETWEEN_SCREENSHOT_CHECK: ${{ runner.temp }}/companion-screenshot-check
         run: |
           set -euo pipefail
-          mise run install
-          mise run build
-          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool NO
-          ./scripts/boot-sim.sh
           cp "$GITHUB_WORKSPACE/tests/companion-simulator.ts" ./companion-simulator.ts
           mkdir -p "$BETWEEN_EVIDENCE"
           xcrun swiftc "$GITHUB_WORKSPACE/tests/companion-screenshot.swift" -o "$BETWEEN_SCREENSHOT_CHECK"
@@ -68,9 +79,6 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/sim-remote"
-          mise run install
-          mise run build
-          ./scripts/boot-sim.sh
           DEVICE=$(xcrun simctl list devices booted -j | python3 -c 'import json,sys; print(next(x["udid"] for v in json.load(sys.stdin)["devices"].values() for x in v if x["state"]=="Booted"))')
           xcrun simctl install "$DEVICE" "$RUNNER_TEMP/between-build/Between.app"
           case "$BETWEEN_SESSION" in
