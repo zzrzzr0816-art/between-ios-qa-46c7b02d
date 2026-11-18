@@ -58,8 +58,25 @@ jobs:
         timeout-minutes: 6
         working-directory: ${{ runner.temp }}/sim-remote
         run: |
+          set -euo pipefail
           defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool NO
-          ./scripts/boot-sim.sh
+          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; choices=[r for r in json.load(sys.stdin)["runtimes"] if r.get("isAvailable") and r["name"].startswith("iOS")]; print(next((r["identifier"] for r in choices if r["version"].startswith("18.")),choices[-1]["identifier"]))')
+          TYPE=$(xcrun simctl list devicetypes -j | python3 -c 'import json,sys; items=json.load(sys.stdin)["devicetypes"]; print(next(d["identifier"] for d in items if d["name"]=="iPhone 16"))')
+          DEVICE=$(xcrun simctl create Between-QA "$TYPE" "$RUNTIME")
+          echo "BETWEEN_SIMULATOR_UDID=$DEVICE" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEVICE"
+          open -a "$(xcode-select -p)/Applications/Simulator.app" --args -CurrentDeviceUDID "$DEVICE"
+          xcrun simctl list devices booted
+          for attempt in $(seq 1 40); do
+            if xcrun simctl io "$DEVICE" screenshot "$RUNNER_TEMP/between-boot.png" >/dev/null 2>&1 \
+              && [ "$(stat -f%z "$RUNNER_TEMP/between-boot.png")" -gt 20000 ]; then
+              echo "Simulator produced a framebuffer"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "The simulator did not produce a framebuffer" >&2
+          exit 1
       - name: Run native companion interaction checks
         if: inputs.companion_check
         timeout-minutes: 5
@@ -86,7 +103,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/sim-remote"
-          DEVICE=$(xcrun simctl list devices booted -j | python3 -c 'import json,sys; print(next(x["udid"] for v in json.load(sys.stdin)["devices"].values() for x in v if x["state"]=="Booted"))')
+          DEVICE="$BETWEEN_SIMULATOR_UDID"
           xcrun simctl install "$DEVICE" "$RUNNER_TEMP/between-build/Between.app"
           case "$BETWEEN_SESSION" in
             fixture-account) ARGS=(-preview-fixture) ;;

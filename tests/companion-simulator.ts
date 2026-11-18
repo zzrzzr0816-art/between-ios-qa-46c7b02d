@@ -20,7 +20,9 @@ const app = process.env.BETWEEN_APP;
 const evidence = process.env.BETWEEN_EVIDENCE;
 const screenshotCheck = process.env.BETWEEN_SCREENSHOT_CHECK;
 if (!app || !evidence || !screenshotCheck) throw new Error('The app, evidence and screenshot checker paths are required');
-const sim = (await listBootedSims())[0];
+const sims = await listBootedSims();
+const udid = process.env.BETWEEN_SIMULATOR_UDID;
+const sim = udid ? sims.find(device => device.udid === udid) : sims[0];
 if (!sim) throw new Error('No booted iOS simulator');
 
 const bundle = 'com.example.between.preview';
