@@ -87,12 +87,6 @@ extension ContentView {
                 Button {openReport("answer",answer.id)} label:{Text("⚑ "+l("举报","Report")).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d)).padding(.leading,8).frame(height:26)}.buttonStyle(.plain)
             }
             Text(answer.text).font(.system(size:14)).lineSpacing(max(0,14*1.6-UIFont.systemFont(ofSize:14).lineHeight)).fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading).padding(.vertical,12)
-            ForEach(Array(answer.replies.enumerated()),id:\.offset){ _,reply in
-                HStack(alignment:.top,spacing:0){
-                    Rectangle().fill(Color(hex:0xe7dedc)).frame(width:2)
-                    (Text(reply.author).font(.system(size:12,weight:.bold))+Text(" ")+Text(reply.text).font(.system(size:12))).foregroundColor(Color(hex:0x817276)).padding(.leading,9)
-                }.fixedSize(horizontal:false,vertical:true).padding(.bottom,6)
-            }
             HStack(spacing:8){
                 Button {
                     guard requireLogin("like") else{return}
@@ -118,7 +112,7 @@ extension ContentView {
                 }
                 Spacer(minLength:0)
                 Button {openReply(answer)} label:{
-                    Text(l("回复","Reply")).font(.system(size:12)).foregroundColor(Color(hex:0x897a7a)).padding(.horizontal,11).frame(height:38).background(Color(hex:0xf8f4f2),in:Capsule())
+                    Text(answer.replies.isEmpty ? l("回复","Reply") : l("回复","Reply")+" · "+String(answer.replies.count)).font(.system(size:12)).foregroundColor(Color(hex:0x897a7a)).padding(.horizontal,11).frame(height:38).background(Color(hex:0xf8f4f2),in:Capsule())
                 }.buttonStyle(PressScale())
             }.padding(.top,12)
         }.padding(16).frame(maxWidth:.infinity,alignment:.leading)
@@ -174,8 +168,8 @@ extension ContentView {
     func writePage(width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
         let count = writeText.count
         let sheetBottom = max(1,height-keyboardHeight)
-        let sheetTop = H5Design.writeSheetTop(height:height,keyboard:keyboardHeight,safeTop:top)
-        let sheetH = sheetBottom-sheetTop
+        let sheetTop = H5Design.writeSheetTop(height:height,safeTop:top)
+        let sheetH = max(1,sheetBottom-sheetTop)
         return VStack(spacing:0){
             sheetHead(l("说说你的烦恼","What's on your mind?"),top:0,padBottom:8,companionSlot:keyboardHeight>0)
             ScrollView {
@@ -200,7 +194,7 @@ extension ContentView {
                     Button {publishStory()} label:{HStack(spacing:6){Text(l("匿名发布","Share anonymously"));Text("↗")}.font(.system(size:15,weight:.bold)).foregroundColor(.white).frame(maxWidth:.infinity,minHeight:48).background(Color(hex:0xc8786d),in:RoundedRectangle(cornerRadius:15))}.buttonStyle(PressScale())
                 }.padding(.horizontal,20).padding(.bottom,keyboardHeight > 0 ? 16 : bottom+20)
             }
-        }.frame(width:width,height:sheetH,alignment:.top).background(Color(hex:0xfffbf9)).clipShape(TopRoundedShape(radius:26)).position(x:width/2,y:sheetBottom-sheetH/2)
+        }.frame(width:width,height:sheetH,alignment:.top).background(Color(hex:0xfffbf9)).clipShape(TopRoundedShape(radius:26)).offset(y:sheetTop).frame(width:width,height:height,alignment:.top)
     }
     func publishStory(){
         let text=writeText.trimmingCharacters(in:.whitespacesAndNewlines)
@@ -398,7 +392,7 @@ extension ContentView {
                         Text("◷ \(story.hoursRemaining()) \(l("小时后消失","hours left"))  ·  \(story.answers.count) \(l("条建议","responses"))").font(.system(size:12)).foregroundColor(Color(hex:0x9a8888)).padding(.top,18)
                     }.padding(.horizontal,26).padding(.bottom,40)
                 }
-                Text(l("拖动小伙伴，看看两边的想法","Drag a friend to see each side")).font(.system(size:11)).foregroundColor(Color(hex:0x8b7678)).padding(.bottom,bottom+22)
+                Text(l("点一下小伙伴，看看两边的想法","Tap a companion to see each side")).font(.system(size:11)).foregroundColor(Color(hex:0x8b7678)).padding(.bottom,bottom+22)
             }
         }.frame(width:width,height:height)
     }
@@ -453,7 +447,7 @@ extension ContentView {
                         Button {openUtility("saved")} label:{profileTile("♡",iconBG:0xfaeee6,iconColor:0xc58c78,label:l("收藏","Saved"),count:snapshots.count)}
                         Button {openUtility("activity")} label:{profileTile("◌",iconBG:0xefecf3,iconColor:0xa096b0,label:l("举报记录","Report history"),count:reports.isEmpty ? nil:reports.count)}
                     }.padding(.top,12)
-                }.padding(.horizontal,18).padding(.bottom,bottom+20)
+                }.padding(.horizontal,18).padding(.bottom,bottom+H5Design.navigationHeight+12)
             }
         }.frame(width:width,height:height).background(Color(hex:0xfffbf9))
             .animation(transitionAnimation,value:auth.userId)
@@ -651,7 +645,7 @@ extension ContentView {
                 Text(title).font(.system(size:19,weight:.bold)).foregroundColor(Color(hex:0x302b32))
                 Spacer()
                 Button {withAnimation(transitionAnimation){utility=nil}} label:{Text("×").font(.system(size:26,weight:.light)).foregroundColor(Color(hex:0x75666d)).frame(width:44,height:44)}.accessibilityLabel(l("关闭","Close"))
-            }.padding(.horizontal,16).padding(.top,top+12).padding(.bottom,80)
+            }.padding(.horizontal,16).padding(.top,top+12).padding(.bottom,12)
             ScrollView {
                 VStack(alignment:.leading,spacing:12){
                     Text(intro).font(.system(size:12)).foregroundColor(Color(hex:0xa29894)).lineSpacing(4).padding(.top,4)
@@ -673,7 +667,7 @@ extension ContentView {
                                 }
                             }
                     }
-                }.padding(.horizontal,20).padding(.bottom,bottom+20)
+                }.padding(.horizontal,20).padding(.bottom,bottom+H5Design.navigationHeight+12)
             }
         }.frame(width:width,height:height).background(Color(hex:0xfffaf8))
     }
@@ -698,8 +692,10 @@ extension ContentView {
 
     // MARK: - Reply layer
     func replyOverlay(_ answer:NativeAnswer,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
-        let dialogBottom = keyboardHeight > 0 ? keyboardHeight+6 : bottom+14
-        let available = max(1,height-top-12-dialogBottom)
+        let lowerEdge = height - (keyboardHeight > 0 ? keyboardHeight+6 : bottom+12)
+        let upperEdge = top+12
+        let available = max(1,lowerEdge-upperEdge)
+        let dialogCenter = upperEdge+available/2
         let originalHeight = estimatedReplyTextHeight(answer.text,width:width-100,fontSize:14)
         let replyContent = answer.replies.prefix(4).reduce(CGFloat(0)) { height, reply in
             height + 46 + estimatedReplyTextHeight(reply.text,width:width-130,fontSize:13)
@@ -707,7 +703,7 @@ extension ContentView {
         let desired = 198+originalHeight+(answer.replies.isEmpty ? 38 : replyContent)
         let dialogH = min(available,min(580,max(270,desired)))
         let accent = Color(hex:answer.side=="devil" ? 0xc6786d:0x628fa9)
-        return ZStack(alignment:.bottom){
+        return ZStack(alignment:.topLeading){
             Color.clear.contentShape(Rectangle()).onTapGesture{closeReply()}
             VStack(alignment:.leading,spacing:0){
                 HStack(spacing:13){
@@ -768,7 +764,7 @@ extension ContentView {
                 }.padding(.horizontal,16).padding(.top,10).padding(.bottom,12).background(Color(hex:0xfffdfb)).overlay(Rectangle().fill(Color(hex:0xeee7e4)).frame(height:1),alignment:.top)
             }.frame(width:width-28,height:dialogH).background(Color(hex:0xfffbf9)).clipShape(RoundedRectangle(cornerRadius:23)).shadow(color:Color(hex:0x45313a).opacity(0.12),radius:16,y:8)
                 .matchedGeometryEffect(id:answer.id,in:replyAnimation,properties:.frame,isSource:true)
-                .padding(.bottom,dialogBottom)
+                .position(x:width/2,y:dialogCenter)
         }.frame(width:width,height:height).id(answer.id)
     }
 }

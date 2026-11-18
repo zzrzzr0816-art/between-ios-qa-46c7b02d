@@ -119,14 +119,14 @@ try {
   screenshot('home-after-swipes', ['angel','devil']);
 
   for (const side of ['devil','angel']) {
-    const direction = side === 'devil' ? -1 : 1;
+    const direction = side === 'angel' ? -1 : 1;
     await swipe(width * 0.5, height * 0.51, direction * width * 0.39, 0);
-    await waitFor(side + ' discussion and both independent roles',
-      labels => labels.has('The conversation') && both(labels) && !labels.has('Post'));
+    await waitFor(side + ' discussion keeps only the selected companion',
+      labels => labels.has('The conversation') && hasRole(labels,side) && !both(labels) && !labels.has('Post'));
     await tapTextArea();
-    await waitFor(side + ' discussion keyboard and both roles',
-      labels => labels.has('QA keyboard visible') && both(labels));
-    screenshot(side + '-keyboard', ['angel','devil']);
+    await waitFor(side + ' discussion keyboard and selected role',
+      labels => labels.has('QA keyboard visible') && hasRole(labels,side) && !both(labels));
+    screenshot(side + '-keyboard', [side]);
     await tapLabel('Back');
     await waitFor(side + ' discussion closes and restores both roles',
       labels => both(labels) && labels.has('Me') && !labels.has('QA keyboard visible') && !labels.has('The conversation'));
@@ -136,16 +136,23 @@ try {
   await waitFor('Profile keeps both companions', labels => [...labels].some(label => label.includes('My stories')) && both(labels));
   screenshot('profile', ['angel','devil']);
   await tapLabel('My stories', true);
-  await waitFor('My stories keeps both companions', labels => labels.has('My stories') && labels.has('Back') && both(labels));
+  await waitFor('My stories keeps both companions', labels => labels.has('My stories') && labels.has('Back') && labels.has('Stories') && both(labels));
   screenshot('my-stories', ['angel','devil']);
   await tapLabel('Close');
   await waitFor('Profile return restores home without a feed gesture', labels => labels.has('1 / 3') && labels.has('Me') && both(labels));
   screenshot('home-after-profile', ['angel','devil']);
 
+  await tapLabel('My best friend is moving away. Do I tell them how much it hurts?');
+  await waitFor('Open story detail', labels => labels.has('View angel responses'));
   await swipe(width * 0.5, height * 0.51, -width * 0.39, 0);
-  await waitFor('Discussion ready to open a reply', labels => labels.has('Reply') && both(labels));
+  await delay(400);
+  await waitFor('Story detail horizontal swipe stays on detail', labels => labels.has('View angel responses') && !labels.has('The conversation'));
+  await tapLabel('Back');
+  await waitFor('Home after closing story detail', labels => labels.has('1 / 3') && both(labels));
+  await swipe(width * 0.5, height * 0.51, -width * 0.39, 0);
+  await waitFor('Discussion ready to open a reply', labels => labels.has('Reply') && hasRole(labels,'angel'));
   await tapLabel('Reply');
-  await waitFor('Reply card expands with both companions present', labels => labels.has('Back to comments') && both(labels));
+  await waitFor('Reply card expands with both companions present', labels => labels.has('Back to comments') && hasRole(labels,'angel'));
   await tapLabel('Back to comments');
   await waitFor('Reply card closes back to discussion', labels => labels.has('The conversation') && !labels.has('Back to comments'));
   await tapLabel('Back');

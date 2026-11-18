@@ -22,9 +22,9 @@ enum H5Design {
         .init(color: Color(hex: 0xb7d9eb), location: 1)
     ], startPoint: UnitPoint(x: 0, y: 0.37), endPoint: UnitPoint(x: 1, y: 0.63))
     static let card = LinearGradient(colors: [Color(hex: 0xfffdf9).opacity(0.93), Color(hex: 0xfff8f4).opacity(0.78)], startPoint: .topLeading, endPoint: .bottomTrailing)
-    static func writeSheetTop(height: CGFloat, keyboard: CGFloat, safeTop: CGFloat) -> CGFloat {
-        let available = max(1,height-keyboard)
-        return min(available-1,max(safeTop,available*0.12))
+    static let navigationHeight: CGFloat = 56
+    static func writeSheetTop(height: CGFloat, safeTop: CGFloat) -> CGFloat {
+        min(max(0,height-1),max(safeTop,height*0.12))
     }
     static func titleSize(_ width: CGFloat) -> CGFloat { min(31, max(23, width * 0.065)) }
     private static let titleHeights: NSCache<NSString, NSNumber> = {

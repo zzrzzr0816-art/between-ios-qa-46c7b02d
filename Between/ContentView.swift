@@ -3,7 +3,7 @@ import Combine
 import UIKit
 
 enum PageDrag: Equatable {
-    case openComments, feed, returnFromComments, detailHandle, scrollComments, readStory
+    case openComments, feed, returnFromComments, scrollComments, readStory
 }
 
 struct ContentView: View {
@@ -26,7 +26,6 @@ struct ContentView: View {
     @State var settling = false
     @GestureState var feedDragging = false
     @GestureState var returningFromComments = false
-    @GestureState var draggingDetailHandle = false
     @State private var toastTask: Task<Void, Never>?
     @State private var hintTask: Task<Void, Never>?
     @State var composer = ""
@@ -108,12 +107,12 @@ struct ContentView: View {
                     homeHeader(width:w,top:top)
                     feed(width:w,area:feedHeight).position(x:w/2,y:100+feedHeight/2)
                     idleHints(width:w,height:h,bottom:bottom)
-                    bottomNav(width:w,height:h,bottom:bottom)
+                    bottomNav(width:w,height:h,bottom:bottom,profileActive:false)
                 }.frame(width:w,height:h)
                     .blur(radius: reduceMotion || !motionOn ? 0 : 5*campProgress)
                     .accessibilityHidden(camp != nil || utility != nil || detailStory != nil || snapshotStory != nil || loginPrompt != nil)
                 if let chosen = camp {
-                    comments(chosen,width:w,height:h,top:top,bottom:bottom).offset(x:-chosen.sign*w*(1-campProgress)).allowsHitTesting((campProgress>0.99 || axis == .returnFromComments || axis == .scrollComments) && !settling && axis != .openComments && axis != .detailHandle)
+                    comments(chosen,width:w,height:h,top:top,bottom:bottom).offset(x:-chosen.sign*w*(1-campProgress)).allowsHitTesting((campProgress>0.99 || axis == .returnFromComments || axis == .scrollComments) && !settling && axis != .openComments)
                         .accessibilityHidden(campProgress < 0.99 || selectedReply != nil || utility == "report" || loginPrompt != nil)
                         .zIndex(detailStory != nil ? 23:2)
                 }
@@ -124,11 +123,15 @@ struct ContentView: View {
                 if let page = utility {
                     utilityPage(page,width:w,height:h,top:top,bottom:bottom).id(page).zIndex(page == "report" ? 30 : 10).transition(pageTransition(page))
                 }
-                if let answer = selectedReply { replyOverlay(answer,width:w,height:h,top:top,bottom:bottom).zIndex(27).transition(.identity) }
+                if let answer = selectedReply { replyOverlay(answer,width:w,height:h,top:top,bottom:bottom).zIndex(29).transition(.identity) }
                 if let story = detailStory { detailPage(story,width:w,height:h,top:top,bottom:bottom).zIndex(22).transition(.scale(scale:0.96).combined(with:.opacity)) }
-                if detailStory != nil {
+                if detailStory != nil && camp == nil {
                     detailHandles(width:w,height:h).zIndex(26)
-                        .allowsHitTesting(utility != "report" && !settling && (camp == nil || axis == .detailHandle))
+                        .allowsHitTesting(utility != "report" && !settling)
+                }
+                if companionMode == .profile || companionMode == .library {
+                    bottomNav(width:w,height:h,bottom:bottom,profileActive:true)
+                        .zIndex(18).transition(.opacity)
                 }
                 if let story = snapshotStory { snapshotPage(story,width:w,height:h,top:top,bottom:bottom).zIndex(22).transition(.opacity) }
                 if guideVisible { guideCard(width:w,bottom:bottom).zIndex(29) }
@@ -189,12 +192,6 @@ struct ContentView: View {
                     guard !returningFromComments, !settling else { return }
                     if axis == .returnFromComments { settleCamp(to: 1) }
                     if axis == .scrollComments { axis = nil }
-                }
-            }
-            .onChange(of: draggingDetailHandle) { active in
-                guard !active else { return }
-                DispatchQueue.main.async {
-                    if !draggingDetailHandle && axis == .detailHandle && !settling { settleCamp(to: 0) }
                 }
             }
             .onReceive(Self.expiryTimer){ _ in pruneExpired() }
@@ -425,7 +422,7 @@ struct ContentView: View {
         }
         if axis == .openComments {
             if value.translation.width != 0 {
-                camp = value.translation.width < 0 ? .devil : .angel
+                camp = value.translation.width < 0 ? .angel : .devil
             }
             campProgress = min(1,abs(value.translation.width)/max(1,width))
         } else if axis == .feed {
@@ -585,12 +582,11 @@ struct ContentView: View {
         let base = CGPoint(x:angel ? placement.angelX : placement.devilX,y:placement.y)
         let resting = writing ? (writeBuddyPosition ?? base) : base
         let position = writing && keyboardHeight > 0
-            ? CGPoint(x:width-93,y:H5Design.writeSheetTop(height:height,keyboard:keyboardHeight,safeTop:top)+34) : resting
-        let scale: CGFloat = writing ? (keyboardHeight > 0 ? 0.77 : 0.87) : 1
-        let parkedAtEdge = writing && writeBuddyPosition != nil && writeBuddyDragOrigin == nil
-            && (resting.x <= 31 || resting.x >= width-31)
-        let touchWidth: CGFloat = parkedAtEdge ? 28 : 67
-        let touchOffset = parkedAtEdge ? (resting.x < width/2 ? -16 : 16)/scale : 0
+            ? CGPoint(x:width-93,y:H5Design.writeSheetTop(height:height,safeTop:top)+34) : resting
+        let scale: CGFloat = writing ? (keyboardHeight > 0 ? 0.77 : 0.87)
+            : (mode == .profile || mode == .library ? 0.55 : 1)
+        let touchWidth: CGFloat = writing ? 62 : 67
+        let opacity: Double = visible ? (camp != nil && camp != side ? Double(1-campProgress) : 1) : 0
         let canTouch = interactive && visible && motionOn && !reduceMotion
         let move: ((CGSize,Bool) -> Void)? = writing ? { delta, ended in
             moveWritingCompanion(from:base,by:delta,ended:ended,width:width,top:top,height:height)
@@ -599,15 +595,15 @@ struct ContentView: View {
                             reply:(angel ? angelCount<devilCount : devilCount<angelCount) ? 1:0,strong:strong,chinese:zh,
                             motionOn:motionOn,dragLeft:max(0,base.x-40)/scale,dragRight:max(0,width-base.x-40)/scale,
                             dragUp:max(0,base.y-top-38)/scale,dragDown:max(0,height-base.y-38)/scale,
-                            touchWidth:touchWidth,touchOffsetX:touchOffset,interactive:canTouch,context:mode,
+                            touchWidth:touchWidth,interactive:canTouch,context:mode,
                             storyID:discussionID ?? detailStory?.id ?? model.current?.id,
-                            slide:axis == .feed || (settling && camp == nil) ? verticalProgress*verticalSign : (camp?.sign ?? 0)*campProgress,
+                            slide:axis == .feed || (settling && camp == nil) ? verticalProgress*verticalSign : 0,
                             moveWithFinger:move,cancelMove:writing ? { cancelWritingCompanionMove() } : nil)
             .scaleEffect(scale).position(position)
-            .opacity(visible ? 1 : 0)
+            .opacity(opacity)
             .allowsHitTesting(canTouch)
             .overlay(alignment:.topLeading) {
-                companionProbe(side,visible:visible)
+                companionProbe(side,visible:opacity>0.05)
                     .position(position)
             }
     }
@@ -661,11 +657,20 @@ struct ContentView: View {
         if let u = utility, ["profile-stories","profile-answers","saved","activity"].contains(u) { return .library }
         return .home
     }
-    func bottomNav(width:CGFloat,height:CGFloat,bottom:CGFloat)->some View {
-        HStack(spacing:0){navItem(l("烦恼","Stories"),icon:"house",active:true){goHome()};navItem(l("发布","Post"),icon:"plus",active:false){openWrite()};navItem(l("我的","Me"),icon:"person",active:false){
-            guard !settling, axis == nil, camp == nil else { return }
-            withAnimation(transitionAnimation){utility="profile"}
-        }}.padding(.horizontal,24).padding(.bottom,bottom).frame(width:width,height:70+bottom).background(ZStack{BlurView();Color(hex:0xfff8fc).opacity(0.53)}).overlay(Rectangle().fill(Color.white.opacity(0.5)).frame(height:1),alignment:.top).position(x:width/2,y:height-(70+bottom)/2)
+    func bottomNav(width:CGFloat,height:CGFloat,bottom:CGFloat,profileActive:Bool)->some View {
+        let barHeight = H5Design.navigationHeight+bottom
+        return HStack(spacing:0) {
+            navItem(l("烦恼","Stories"),icon:"house",active:!profileActive){goHome()}
+            navItem(l("发布","Post"),icon:"plus",active:false){openWrite()}
+            navItem(l("我的","Me"),icon:"person",active:profileActive){
+                guard !settling, axis == nil, camp == nil else { return }
+                withAnimation(transitionAnimation){utility="profile"}
+            }
+        }
+        .padding(.horizontal,24).padding(.bottom,bottom).frame(width:width,height:barHeight)
+        .background(ZStack{BlurView();Color(hex:0xfff8fc).opacity(0.53)})
+        .overlay(Rectangle().fill(Color.white.opacity(0.5)).frame(height:1),alignment:.top)
+        .position(x:width/2,y:height-barHeight/2)
     }
     func goHome(){
         guard !settling, axis == nil else { return }
@@ -733,25 +738,15 @@ struct ContentView: View {
         }.frame(width:width,height:height).allowsHitTesting(true)
     }
     func detailHandle(_ side:NativeCamp,width:CGFloat,y:CGFloat)->some View {
-        let sign:CGFloat = side == .devil ? 1:-1
-        return Rectangle().fill(Color.white.opacity(0.001)).frame(width:64,height:140)
-            .contentShape(Rectangle())
-            .position(x: side == .devil ? 15:width-15, y:y)
-            .highPriorityGesture(DragGesture(minimumDistance:6,coordinateSpace:.global).updating($draggingDetailHandle) { _, active, _ in active = true }.onChanged{value in
-                guard selectedReply == nil, !settling else{return}
-                let drag = value.translation.width*sign
-                if drag > 0 || axis == .detailHandle {
-                    axis = .detailHandle
-                    discussionID = detailStory?.id
-                    camp = side
-                    campProgress = min(1,max(0,drag/max(1,width)))
-                }
-            }.onEnded { value in
-                guard axis == .detailHandle, !settling else { return }
-                let drag = value.translation.width*sign
-                settleCamp(to: drag > max(65,width*0.23) ? 1 : 0)
-            })
-            .onTapGesture {withAnimation(transitionAnimation){discussionID=detailStory?.id;camp=side;campProgress=1}}
+        Button {
+            guard let story = detailStory, camp == nil else { return }
+            discussionID = story.id
+            withAnimation(transitionAnimation){camp=side;campProgress=1}
+        } label: {
+            Color.clear.frame(width:48,height:64).contentShape(Rectangle())
+        }
+        .accessibilityLabel(side == .angel ? l("查看天使建议","View angel responses") : l("查看恶魔建议","View devil responses"))
+        .position(x:side == .devil ? 23 : width-23,y:y)
     }
     func pruneExpired() {
         guard axis == nil, !settling else { return }
@@ -801,11 +796,11 @@ struct ContentView: View {
     func idleHints(width:CGFloat,height:CGFloat,bottom:CGFloat)->some View {
         let show = hintVisible && camp == nil && utility == nil && selectedReply == nil && !settling && verticalProgress < 0.001
         return HStack(spacing:8){
-            Text("← " + l("恶魔","Devil"))
+            Text("← " + l("天使","Angel"))
             Spacer(minLength:8)
             Text("↑ " + l("下一个","Next"))
             Spacer(minLength:8)
-            Text(l("天使","Angel") + " →")
+            Text(l("恶魔","Devil") + " →")
         }.font(.system(size:11)).foregroundColor(Color(hex:0x6e5964)).padding(.horizontal,26).frame(width:width).opacity(show ? 0.68:0).offset(y:show ? 0:4).position(x:width/2,y:height-bottom-94.5).allowsHitTesting(false)
     }
     func navItem(_ title:String,icon:String,active:Bool,action:@escaping ()->Void)->some View {
@@ -817,9 +812,9 @@ struct ContentView: View {
                 ZStack{
                     RoundedRectangle(cornerRadius: post ? 11:12).fill(post ? Color(hex:0xdf9b90) : active ? Color(hex:0xf6e5e2) : Color.clear)
                     NavGlyph(kind:kind).stroke(post ? Color.white:color, style:StrokeStyle(lineWidth:post ? 2*22/24:1.8*21/24,lineCap:.round,lineJoin:.round)).frame(width:post ? 22:21,height:post ? 22:21)
-                }.frame(width:post ? 39:34,height:post ? 30:29)
+                }.frame(width:post ? 36:31,height:post ? 25:24)
                 Text(title).font(.system(size:11,weight:.semibold)).foregroundColor(color)
-            }.frame(maxWidth:.infinity,minHeight:56)
+            }.frame(maxWidth:.infinity,minHeight:48)
         }
     }
 }
@@ -882,9 +877,9 @@ private struct CompanionPlacement:Equatable {
                 y += (height*0.46+29-y)*remaining
             }
         case .profile, .library:
-            y = top+102
-            devilX = width/2-47
-            angelX = width/2+47
+            y = top+43
+            devilX = width-133
+            angelX = width-101
         case .write(let side):
             y = max(top+34,height*0.12-16)
             devilX = 61
