@@ -126,7 +126,7 @@ struct ContentView: View {
                     utilityPage(page,width:w,height:h,top:top,bottom:bottom).id(page).zIndex(page == "report" ? 30 : 10).transition(pageTransition(page))
                 }
                 if let answer = selectedReply { replyOverlay(answer,width:w,height:h,top:top,bottom:bottom).zIndex(29).transition(.identity) }
-                if let story = detailStory { detailPage(story,width:w,height:h,top:top,bottom:bottom).zIndex(22).transition(.scale(scale:0.96).combined(with:.opacity)) }
+                if let story = detailStory { detailPage(story,width:w,height:h,top:top,bottom:bottom).zIndex(22).transition(storyContentTransition(story,width:w,height:h)) }
                 if detailStory != nil && camp == nil {
                     detailHandles(width:w,height:h).zIndex(26)
                         .allowsHitTesting(utility != "report" && !settling)
@@ -484,9 +484,8 @@ struct ContentView: View {
         }
     }
     func settleCamp(to progress: CGFloat) {
-        let returning = axis == .returnFromComments || (axis == nil && campProgress > 0)
-        let duration = returning ? 0.30 : 0.34
-        let animation = transitionAnimation == nil ? nil : Animation.timingCurve(0.22,1,0.36,1,duration:duration)
+        let duration = 0.34
+        let animation = transitionAnimation
         settle(duration: duration, animation: animation, changes: { campProgress = progress }) {
             if progress == 0 { camp = nil; discussionID = nil; composer = ""; replyText = "" }
             resetIdleHints()
@@ -494,8 +493,8 @@ struct ContentView: View {
     }
     func settleFeed(to id: String?, releaseBoost: CGFloat = 0) {
         let remaining = abs((id == nil ? 0 : 1)-verticalProgress)
-        let duration = verticalTarget == nil ? 0.30 : max(0.32,min(0.54,0.36+Double(remaining)*0.21-Double(min(releaseBoost,1))*0.065))
-        let animation = transitionAnimation == nil ? nil : Animation.timingCurve(0.18,0.85,0.24,1,duration:duration)
+        let duration = verticalTarget == nil ? 0.34 : max(0.30,min(0.43,0.30+Double(remaining)*0.13-Double(min(releaseBoost,1))*0.06))
+        let animation = transitionAnimation == nil ? nil : Animation.timingCurve(0.22,1,0.36,1,duration:duration)
         settle(duration: duration, animation: animation, changes: {
             verticalProgress = id == nil ? 0 : 1
             edgeOffset = 0
@@ -561,14 +560,20 @@ struct ContentView: View {
                 Text(l("后续进展","Update")+" · "+update).font(.system(size:12)).foregroundColor(Color(hex:0x816e75)).multilineTextAlignment(.center).lineLimit(2).padding(.top,14).frame(maxWidth:330)
             }
             Text("◷ \(hours) \(l("小时后消失","hours left"))  ·  \(story.answers.count) \(l("条建议","responses"))").font(.system(size:12)).foregroundColor(H5Design.muted).padding(.top,18).padding(.bottom,34)
-        }.padding(.horizontal,26).frame(width:width-52,height:height).clipped().background(H5Design.card,in:RoundedRectangle(cornerRadius:30))
-            .overlay(RoundedRectangle(cornerRadius:30).stroke(Color.white.opacity(0.79),lineWidth:1)).overlay(RoundedRectangle(cornerRadius:24).stroke(Color.white.opacity(0.67),lineWidth:1).padding(7)).shadow(color:Color(hex:0xa46872).opacity(0.17),radius:24,x:0,y:20).shadow(color:Color(hex:0x896d7b).opacity(0.08),radius:6,x:0,y:4)
+        }.padding(.horizontal,26).frame(width:width-52,height:height).clipped()
+            .background {
+                RoundedRectangle(cornerRadius:30)
+                    .fill(H5Design.card)
+                    .overlay(RoundedRectangle(cornerRadius:30).stroke(Color.white.opacity(0.79),lineWidth:1))
+                    .overlay(RoundedRectangle(cornerRadius:24).stroke(Color.white.opacity(0.67),lineWidth:1).padding(7))
+                    .shadow(color:Color(hex:0xa46872).opacity(0.17),radius:24,y:20)
+            }
             .contentShape(RoundedRectangle(cornerRadius:30))
             .onTapGesture {if interactive && axis == nil && !settling && camp == nil {openDetail(story)}}
     }
     func pageTransition(_ page:String)->AnyTransition {
-        if page == "more" { return .offset(y:72).combined(with:.opacity) }
-        if page == "write" { return .move(edge:.bottom).combined(with:.opacity) }
+        if page == "more" { return .move(edge:.bottom) }
+        if page == "write" { return .move(edge:.bottom) }
         return .opacity.combined(with:.scale(scale:0.985))
     }
     func openDetail(_ story:NativeStory){
@@ -612,8 +617,7 @@ struct ContentView: View {
                             motionOn:motionOn,dragLeft:max(0,base.x-40)/scale,dragRight:max(0,width-base.x-40)/scale,
                             dragUp:max(0,base.y-top-38)/scale,dragDown:max(0,height-base.y-38)/scale,
                             touchWidth:touchWidth,interactive:canTouch,context:mode,
-                            storyID:discussionID ?? detailStory?.id ?? model.current?.id,
-                            slide:axis == .feed || (settling && camp == nil) ? verticalProgress*verticalSign : 0,
+                            slide:axis == .feed || (settling && camp == nil) ? sin(verticalProgress * .pi)*verticalSign : 0,
                             moveWithFinger:move,cancelMove:writing ? { cancelWritingCompanionMove() } : nil)
             .scaleEffect(scale).position(position)
             .opacity(opacity)
@@ -757,7 +761,8 @@ struct ContentView: View {
         Button {
             guard let story = detailStory, camp == nil else { return }
             discussionID = story.id
-            withAnimation(transitionAnimation){camp=side;campProgress=1}
+            camp = side
+            settleCamp(to: 1)
         } label: {
             Color.clear.frame(width:48,height:64).contentShape(Rectangle())
         }
@@ -893,14 +898,10 @@ private struct CompanionPlacement:Equatable {
                 angelX += 52*remaining
                 y += (height*0.46+29-y)*remaining
             }
-        case .profile:
+        case .profile, .library:
             y = top+30
             devilX = width-64
             angelX = width-32
-        case .library:
-            y = top+43
-            devilX = width-133
-            angelX = width-101
         case .write(let side):
             y = max(top+34,height*0.12-16)
             devilX = 61

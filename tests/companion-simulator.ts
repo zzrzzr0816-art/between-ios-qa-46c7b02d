@@ -136,9 +136,9 @@ try {
   await waitFor('Profile keeps both companions', labels => [...labels].some(label => label.includes('My stories')) && !labels.has('Close') && labels.has('Stories') && both(labels));
   screenshot('profile', ['angel','devil']);
   await tapLabel('My stories', true);
-  await waitFor('My stories keeps both companions', labels => labels.has('My stories') && labels.has('Back') && labels.has('Stories') && both(labels));
+  await waitFor('My stories keeps both companions', labels => labels.has('My stories') && labels.has('Back') && !labels.has('Close') && labels.has('Stories') && both(labels));
   screenshot('my-stories', ['angel','devil']);
-  await tapLabel('Close');
+  await tapLabel('Stories');
   await waitFor('Profile return restores home without a feed gesture', labels => labels.has('1 / 5') && labels.has('Me') && both(labels));
   screenshot('home-after-profile', ['angel','devil']);
 
@@ -147,12 +147,16 @@ try {
   await swipe(width * 0.5, height * 0.51, -width * 0.39, 0);
   await delay(400);
   await waitFor('Story detail horizontal swipe stays on detail', labels => labels.has('View angel responses') && !labels.has('The conversation'));
+  await tapLabel('View angel responses');
+  await waitFor('Companion opens the same angel discussion', labels => labels.has('The conversation') && hasRole(labels,'angel') && !hasRole(labels,'devil'));
+  await swipe(width * 0.5, height * 0.51, width * 0.39, 0);
+  await waitFor('Swiping discussion closed returns to the expanded story', labels => labels.has('View angel responses') && !labels.has('The conversation'));
   await tapLabel('Back');
   await waitFor('Home after closing story detail', labels => labels.has('1 / 5') && both(labels));
   await swipe(width * 0.5, height * 0.51, -width * 0.39, 0);
   await waitFor('Discussion ready to open a reply', labels => labels.has('Reply') && hasRole(labels,'angel'));
   await tapLabel('Reply');
-  await waitFor('Reply card expands with both companions present', labels => labels.has('Back to comments') && hasRole(labels,'angel'));
+  await waitFor('Reply card shows only its own composer and camp', labels => labels.has('Back to comments') && labels.has('Write a reply…') && !labels.has('Say something kind…') && hasRole(labels,'angel') && !hasRole(labels,'devil'));
   await tapLabel('Back to comments');
   await waitFor('Reply card closes back to discussion', labels => labels.has('The conversation') && !labels.has('Back to comments'));
   await tapLabel('Back');

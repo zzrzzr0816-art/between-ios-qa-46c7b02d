@@ -25,19 +25,22 @@ extension ContentView {
                     ForEach(answers){answer in commentCard(answer)}
                 }.padding(.horizontal,20).padding(.top,10).padding(.bottom,18)
                     .id(chosen)
-                    .transition(.asymmetric(insertion:.move(edge: chosen == .angel ? .trailing:.leading).combined(with:.opacity),removal:.opacity))
+                    .transition(.asymmetric(insertion:.offset(x:-chosen.sign*width),removal:.offset(x:-chosen.sign*width)))
             }
             HStack(spacing:9){
                 ZStack(alignment:.topLeading){
                     GrowField(text:$composer,height:$composerHeight,focused:$composerFocused,
                               prompt:l("说点什么…","Say something kind…"))
                 }.frame(height:composerHeight).background(Color(hex:0xf7f4f1),in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xeee8e4),lineWidth:1))
-                Button {sendPreview(chosen)} label:{HStack(spacing:4){Text(l("发送","Send"));Text("↑")}.font(.system(size:15,weight:.bold)).foregroundColor(.white).padding(.horizontal,16).frame(minHeight:44).background(Color(hex:chosen == .devil ? 0xc6786d:0x628fa9),in:RoundedRectangle(cornerRadius:16))}.buttonStyle(PressScale())
+                Button {sendPreview(chosen)} label:{HStack(spacing:4){Text(l("发送","Send"));Text("↑")}.font(.system(size:15,weight:.bold)).foregroundColor(.white).padding(.horizontal,16).frame(minHeight:44).background(chosen.accent,in:RoundedRectangle(cornerRadius:16))}.buttonStyle(PressScale())
             }.padding(.horizontal,16).padding(.top,8).padding(.bottom,keyboardHeight > 0 ? 8 : bottom+10)
                 .background(Color(hex:0xfffdfb)).overlay(Rectangle().fill(Color(hex:0xeee5e2)).frame(height:1),alignment:.top)
+                .opacity(selectedReply == nil ? 1 : 0)
+                .allowsHitTesting(selectedReply == nil)
+                .accessibilityHidden(selectedReply != nil)
         }.frame(width:width,height:max(1,height-keyboardHeight),alignment:.top)
             .frame(width:width,height:height,alignment:.top)
-            .background(selectedReply == nil ? chosen.background : Color(hex:chosen == .devil ? 0xe4c7c2 : 0xc4dce8))
+            .background(chosen.background)
             .simultaneousGesture(DragGesture(minimumDistance:8,coordinateSpace:.global)
                 .updating($returningFromComments) { _, active, _ in active = true }
                 .onChanged { value in
@@ -116,12 +119,14 @@ extension ContentView {
                 }.buttonStyle(PressScale())
             }.padding(.top,12)
         }.padding(16).frame(maxWidth:.infinity,alignment:.leading)
-            .background(Color.white,in:RoundedRectangle(cornerRadius:18))
-            .overlay(RoundedRectangle(cornerRadius:18).stroke(Color(hex:0xf0e9e7),lineWidth:1))
-            .shadow(color:Color(hex:0x806a68).opacity(0.06),radius:8,y:4)
+            .background {
+                RoundedRectangle(cornerRadius:18).fill(.white)
+                    .overlay(RoundedRectangle(cornerRadius:18).stroke(Color(hex:0xf0e9e7),lineWidth:1))
+                    .shadow(color:Color(hex:0x806a68).opacity(0.06),radius:8,y:4)
+                    .matchedGeometryEffect(id:answer.id,in:replyAnimation,isSource:selectedReply?.id != answer.id)
+            }
             .contentShape(RoundedRectangle(cornerRadius:18))
             .onTapGesture {openReply(answer)}
-            .matchedGeometryEffect(id:answer.id,in:replyAnimation,properties:.frame,isSource:selectedReply?.id != answer.id)
             .opacity(selectedReply?.id == answer.id ? 0 : 1)
             .accessibilityHidden(selectedReply?.id == answer.id)
     }
@@ -170,6 +175,7 @@ extension ContentView {
         let sheetBottom = max(1,height-keyboardHeight)
         let sheetTop = H5Design.writeSheetTop(height:height,safeTop:top)
         let sheetH = max(1,sheetBottom-sheetTop)
+        let editorHeight = max(146,height*0.37)
         return VStack(spacing:0){
             sheetHead(l("说说你的烦恼","What's on your mind?"),top:0,padBottom:8,companionSlot:keyboardHeight>0)
             ScrollView {
@@ -178,9 +184,9 @@ extension ContentView {
                         HStack(spacing:5){Text("✦");Text(l("匿名发布","Anonymous"))}.font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0xa8737a)).padding(.horizontal,11).padding(.vertical,6).background(Color(hex:0xf7e6e0),in:Capsule())
                         Spacer()
                     }
-                    GrowField(text:$writeText,height:.constant(146),focused:$writeFieldFocused,maxHeight:146,
+                    GrowField(text:$writeText,height:.constant(editorHeight),focused:$writeFieldFocused,maxHeight:editorHeight,
                               label:l("烦恼正文","Story text"),prompt:l("最近有什么让你纠结的事？","What's been on your mind lately?"))
-                        .frame(height:146,alignment:.topLeading).background(Color(hex:0xf7f1ee),in:RoundedRectangle(cornerRadius:17)).overlay(RoundedRectangle(cornerRadius:17).stroke(Color(hex:0xf0e7e2),lineWidth:1)).padding(.top,10)
+                        .frame(height:editorHeight,alignment:.topLeading).background(Color(hex:0xf7f1ee),in:RoundedRectangle(cornerRadius:17)).overlay(RoundedRectangle(cornerRadius:17).stroke(Color(hex:0xf0e7e2),lineWidth:1)).padding(.top,10)
                     HStack{
                         Text(l("说你想说的","In your own words"))
                         Spacer()
@@ -372,7 +378,11 @@ extension ContentView {
     }
     func detailPage(_ story:NativeStory,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
         ZStack(alignment:.top){
-            LinearGradient(stops:[.init(color:Color(hex:0xf0b3ae),location:0),.init(color:Color(hex:0xfacfc7),location:0.34),.init(color:Color(hex:0xf8efe8),location:0.56),.init(color:Color(hex:0xd9ecf4),location:1)],startPoint:.topLeading,endPoint:.bottomTrailing)
+            RoundedRectangle(cornerRadius:0)
+                .fill(H5Design.background)
+                .overlay(Rectangle().stroke(Color.white.opacity(0.65),lineWidth:1))
+                .frame(width:width,height:height)
+                .allowsHitTesting(false)
             VStack(spacing:0){
                 HStack{
                     Button {withAnimation(transitionAnimation){detailStory=nil}} label:{Text("‹").font(.system(size:32,weight:.light)).foregroundColor(Color(hex:0x6a5457)).frame(width:44,height:44)}.accessibilityLabel(l("返回","Back"))
@@ -391,8 +401,20 @@ extension ContentView {
                 }
                 Text(l("点一下小伙伴，看看两边的想法","Tap a companion to see each side")).font(.system(size:11)).foregroundColor(Color(hex:0x8b7678)).padding(.bottom,bottom+22)
             }
+            .frame(width:width,height:height)
         }.frame(width:width,height:height)
     }
+    func storyContentTransition(_ story: NativeStory,width: CGFloat,height: CGFloat) -> AnyTransition {
+        guard utility == nil else { return .identity }
+        let area = max(1,height-265)
+        let cardHeight = H5Design.cardHeight(story.text,width:width,available:area)
+        let card = CGRect(x:26,y:100+(area-cardHeight)/2,width:max(1,width-52),height:cardHeight)
+        return .modifier(
+            active:StoryContentReveal(progress:0,card:card,size:CGSize(width:width,height:height)),
+            identity:StoryContentReveal(progress:1,card:card,size:CGSize(width:width,height:height))
+        )
+    }
+
     func snapshotPage(_ story:NativeStory,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
         VStack(alignment:.leading,spacing:0){
             HStack(spacing:10){
@@ -640,8 +662,7 @@ extension ContentView {
                 Button {openUtility("profile")} label:{Text("‹").font(.system(size:32,weight:.light)).foregroundColor(Color(hex:0x75666d)).frame(width:44,height:44)}.accessibilityLabel(l("返回","Back"))
                 Text(title).font(.system(size:19,weight:.bold)).foregroundColor(Color(hex:0x302b32))
                 Spacer()
-                Button {withAnimation(transitionAnimation){utility=nil}} label:{Text("×").font(.system(size:26,weight:.light)).foregroundColor(Color(hex:0x75666d)).frame(width:44,height:44)}.accessibilityLabel(l("关闭","Close"))
-            }.padding(.horizontal,16).padding(.top,top+12).padding(.bottom,12)
+            }.frame(height:44).padding(.horizontal,16).padding(.top,top+8)
             ScrollView {
                 VStack(alignment:.leading,spacing:12){
                     Text(intro).font(.system(size:12)).foregroundColor(Color(hex:0xa29894)).lineSpacing(4).padding(.top,4)
@@ -678,34 +699,22 @@ extension ContentView {
         withAnimation(transitionAnimation) { selectedReply = nil }
     }
 
-    private func estimatedReplyTextHeight(_ text:String,width:CGFloat,fontSize:CGFloat) -> CGFloat {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = 3
-        return ceil((text as NSString).boundingRect(with:CGSize(width:max(1,width),height:1000),
-            options:[.usesLineFragmentOrigin,.usesFontLeading],
-            attributes:[.font:UIFont.systemFont(ofSize:fontSize),.paragraphStyle:paragraph],context:nil).height)
-    }
-
     // MARK: - Reply layer
     func replyOverlay(_ answer:NativeAnswer,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
-        let lowerEdge = height - (keyboardHeight > 0 ? keyboardHeight+6 : bottom+12)
-        let upperEdge = top+12
-        let available = max(1,lowerEdge-upperEdge)
-        let dialogCenter = upperEdge+available/2
-        let originalHeight = estimatedReplyTextHeight(answer.text,width:width-100,fontSize:14)
-        let replyContent = answer.replies.prefix(4).reduce(CGFloat(0)) { height, reply in
-            height + 46 + estimatedReplyTextHeight(reply.text,width:width-130,fontSize:13)
-        }
-        let desired = 198+originalHeight+(answer.replies.isEmpty ? 38 : replyContent)
-        let dialogH = min(available,min(580,max(270,desired)))
-        let accent = Color(hex:answer.side=="devil" ? 0xc6786d:0x628fa9)
+        let lowerEdge = height - (keyboardHeight > 0 ? keyboardHeight+4 : bottom+6)
+        let upperEdge = top+6
+        let dialogH = max(1,lowerEdge-upperEdge)
+        let dialogCenter = upperEdge+dialogH/2
+        let side = NativeCamp(rawValue:answer.side)
+        let accent = side?.accent ?? H5Design.muted
+        let surface = side?.background ?? Color(hex:0xfffbf9)
         return ZStack(alignment:.topLeading){
             Color.clear.contentShape(Rectangle()).onTapGesture{closeReply()}
             VStack(alignment:.leading,spacing:0){
                 HStack(spacing:13){
                     Button {closeReply()} label:{Text("‹").font(.system(size:32,weight:.light)).foregroundColor(Color(hex:0x5d5055)).frame(width:42,height:42).background(Color(hex:0xf2eae6),in:Circle())}.accessibilityLabel(l("返回评论","Back to comments"))
                     VStack(alignment:.leading,spacing:3){
-                        Text(l("回复","Replies")).font(.system(size:18,weight:.bold))
+                        Text(l("回复","Replies")).font(.system(size:18,weight:.bold)).foregroundColor(accent)
                         Text("\(answer.replies.count) \(l("条回复","replies"))").font(.system(size:11)).foregroundColor(Color(hex:0x988b88))
                     }
                     Spacer(minLength:0)
@@ -731,7 +740,7 @@ extension ContentView {
                         } else {
                             ForEach(Array(answer.replies.enumerated()),id:\.offset){ idx,reply in
                                 HStack(alignment:.top,spacing:10){
-                                    Text("✦").font(.system(size:13)).foregroundColor(Color(hex:0xd9a89c)).frame(width:26,height:26).background(Color(hex:0xfaf0eb),in:Circle())
+                                    Text("✦").font(.system(size:13)).foregroundColor(accent).frame(width:26,height:26).background(accent.opacity(0.12),in:Circle())
                                     VStack(alignment:.leading,spacing:4){
                                         HStack{
                                             Text(reply.author).font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0x817276))
@@ -746,24 +755,59 @@ extension ContentView {
                                     .animation(reduceMotion || !motionOn ? nil:.easeOut(duration:0.3).delay(Double(min(idx,6))*0.04),value:answer.replies.count)
                             }
                         }
-                    }.padding(.horizontal,20).padding(.bottom,18)
+                    }.padding(.horizontal,12).padding(.bottom,14)
                 }
-                VStack(spacing:0){
-                    Text("↳ \(l("回复","Reply")) \(answer.author)  ·  \(l("匿名","anonymous"))").font(.system(size:11)).foregroundColor(Color(hex:0x9b8f8b)).frame(maxWidth:.infinity,alignment:.leading).padding(.bottom,8)
-                    HStack(spacing:9){
+                HStack(spacing:9){
                         ZStack(alignment:.topLeading){
                             GrowField(text:$replyText,height:$replyHeight,focused:$replyFocused,maxHeight:104,
-                                      prompt:l("写下回复…","Write a reply…"))
+                                      prompt:l("写下回复…","Write a reply…"),returnKey:.send,submit:{appendReply(answer)})
                         }.frame(height:replyHeight).background(Color(hex:0xf7f4f1),in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xeee8e4),lineWidth:1))
-                        Button {appendReply(answer)} label:{HStack(spacing:4){Text(l("发送","Send"));Text("↑")}.font(.system(size:13,weight:.bold)).foregroundColor(.white).padding(.horizontal,13).frame(minWidth:74,minHeight:46).background(accent,in:RoundedRectangle(cornerRadius:15))}.buttonStyle(PressScale())
-                    }
-                }.padding(.horizontal,16).padding(.top,10).padding(.bottom,12).background(Color(hex:0xfffdfb)).overlay(Rectangle().fill(Color(hex:0xeee7e4)).frame(height:1),alignment:.top)
-            }.frame(width:width-28,height:dialogH).background(Color(hex:0xfffbf9)).clipShape(RoundedRectangle(cornerRadius:23)).shadow(color:Color(hex:0x45313a).opacity(0.12),radius:16,y:8)
-                .matchedGeometryEffect(id:answer.id,in:replyAnimation,properties:.frame,isSource:true)
-                .position(x:width/2,y:dialogCenter)
+                    Button {appendReply(answer)} label:{
+                        Image(systemName:"arrow.up").font(.system(size:16,weight:.semibold))
+                            .foregroundColor(.white).frame(width:44,height:44)
+                            .background(accent,in:Circle())
+                    }.buttonStyle(PressScale()).accessibilityLabel(l("发送回复","Send reply"))
+                }.padding(.horizontal,12).padding(.vertical,8)
+            }
+            .frame(width:max(1,width-12),height:dialogH)
+            .background {
+                RoundedRectangle(cornerRadius:20).fill(surface)
+                    .shadow(color:Color(hex:0x45313a).opacity(0.12),radius:12,y:5)
+                    .matchedGeometryEffect(id:answer.id,in:replyAnimation)
+            }
+            .position(x:width/2,y:dialogCenter)
         }.frame(width:width,height:height).id(answer.id)
     }
 }
+private struct StoryContentReveal: AnimatableModifier {
+    var progress: CGFloat
+    let card: CGRect
+    let size: CGSize
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let remaining = 1-progress
+        let width = card.width*remaining+size.width*progress
+        let height = card.height*remaining+size.height*progress
+        content.mask(alignment:.topLeading) {
+            RoundedRectangle(cornerRadius:30*remaining)
+                .frame(width:width,height:height)
+                .offset(x:card.minX*remaining,y:card.minY*remaining)
+        }
+        .overlay(alignment:.topLeading) {
+            RoundedRectangle(cornerRadius:30*remaining)
+                .strokeBorder(.white.opacity(0.7*Double(remaining)),lineWidth:1)
+                .frame(width:width,height:height)
+                .offset(x:card.minX*remaining,y:card.minY*remaining)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
 struct GrowField:UIViewRepresentable {
     @Binding var text:String
     @Binding var height:CGFloat
@@ -771,6 +815,8 @@ struct GrowField:UIViewRepresentable {
     var maxHeight:CGFloat = 112
     var label: String?
     var prompt: String?
+    var returnKey: UIReturnKeyType = .default
+    var submit: (() -> Void)?
     func makeUIView(context:Context)->PromptTextView {
         let v=PromptTextView(frame:.zero,textContainer:nil)
         v.backgroundColor = .clear
@@ -778,6 +824,7 @@ struct GrowField:UIViewRepresentable {
         v.textColor = UIColor(red:0.19,green:0.16,blue:0.19,alpha:1)
         v.tintColor = UIColor(red:0.57,green:0.30,blue:0.31,alpha:1)
         v.prompt = prompt
+        v.returnKeyType = returnKey
         v.textContainerInset = UIEdgeInsets(top:13,left:8,bottom:13,right:8)
         v.textContainer.lineFragmentPadding = 4
         v.isScrollEnabled = false
@@ -812,6 +859,11 @@ struct GrowField:UIViewRepresentable {
     final class Coordinator:NSObject,UITextViewDelegate {
         var parent:GrowField
         init(_ p:GrowField){parent=p}
+        func textView(_ tv:UITextView,shouldChangeTextIn range:NSRange,replacementText text:String)->Bool {
+            guard text == "\n", tv.markedTextRange == nil, let submit = parent.submit else { return true }
+            submit()
+            return false
+        }
         func textViewDidChange(_ tv:UITextView){
             (tv as? PromptTextView)?.updatePromptVisibility()
             parent.text=tv.text

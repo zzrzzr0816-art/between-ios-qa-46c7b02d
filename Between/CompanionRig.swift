@@ -19,7 +19,6 @@ struct CompanionRig: View {
     var touchOffsetX: CGFloat = 0
     var interactive = true
     var context: CompanionMode = .home
-    var storyID: String?
     var slide: CGFloat = 0
     var moveWithFinger: ((CGSize, Bool) -> Void)?
     var cancelMove: (() -> Void)?
@@ -84,7 +83,7 @@ struct CompanionRig: View {
                 .accessibilityAction { if interactive && motion && bridge.ready { bridge.run("buddyTap(0,0)") } }
         }
         .frame(width: 250, height: 250)
-        .offset(y: motion ? -sin(abs(slide) * .pi)*4 : 0)
+        .offset(y: motion ? -abs(slide)*4 : 0)
         .rotationEffect(.degrees(motion ? Double(slide)*(angel ? -4 : 4) : 0))
         .onAppear { bridge.update(script) }
         .onChange(of: script) { bridge.update($0) }
@@ -92,10 +91,9 @@ struct CompanionRig: View {
             if !enabled { cancelDrag() }
         }
         .onChange(of: interactive) { enabled in
-            if !enabled { resetInteraction() }
+            if !enabled && dragging { cancelDrag() }
         }
-        .onChange(of: context) { _ in resetInteraction() }
-        .onChange(of: storyID) { _ in resetInteraction() }
+        .onChange(of: context) { _ in if dragging { cancelDrag() } }
         .onChange(of: bridge.ready) { ready in
             if !ready { cancelDrag() }
         }
@@ -109,11 +107,6 @@ struct CompanionRig: View {
             }
         }
 
-    }
-
-    private func resetInteraction() {
-        cancelDrag()
-        bridge.run("clearBuddyTap()")
     }
 
     private func cancelDrag() {
