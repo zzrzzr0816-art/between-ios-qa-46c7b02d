@@ -126,7 +126,7 @@ extension ContentView {
             }
             .background {
                 GeometryReader { proxy in
-                    Color.clear.preference(key:ReplyCardFrames.self,
+                    Color.clear.preference(key:CardFrames.self,
                                            value:[answer.id:proxy.frame(in:.named("card-stage"))])
                 }
             }
@@ -415,7 +415,7 @@ extension ContentView {
                         storyTitle(story,width:width)
                             .frame(width:max(1,width-104))
                             .frame(maxWidth:.infinity)
-                            .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:true,expanded:true))
+                            .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:true,expanded:true,enabled:detailOrigin == nil))
                             .padding(.top,16)
                         if let detail = story.detail, !detail.isEmpty {
                             Text(detail).font(.system(size:16)).lineSpacing(6)
@@ -435,14 +435,11 @@ extension ContentView {
         }.frame(width:width,height:height)
     }
     func storyContentTransition(_ story: NativeStory,width: CGFloat,height: CGFloat) -> AnyTransition {
-        guard utility == nil else { return .identity }
+        if utility != nil { return fullCardReveal(from:detailOrigin,width:width,height:height,radius:16) }
         let area = max(1,height-265)
         let cardHeight = H5Design.cardHeight(story.text,width:width,available:area)
         let card = CGRect(x:26,y:100+(area-cardHeight)/2,width:max(1,width-52),height:cardHeight)
-        return .modifier(
-            active:StoryContentReveal(progress:0,card:card,size:CGSize(width:width,height:height)),
-            identity:StoryContentReveal(progress:1,card:card,size:CGSize(width:width,height:height))
-        )
+        return fullCardReveal(from:card,width:width,height:height,radius:30)
     }
 
     func snapshotPage(_ story:NativeStory,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
@@ -699,18 +696,31 @@ extension ContentView {
                     if items.isEmpty {
                         Text(empty).font(.system(size:14)).foregroundColor(Color(hex:0xa09494)).frame(maxWidth:.infinity).padding(.vertical,35)
                     }
-                    ForEach(Array(items.enumerated()),id:\.offset){ _,item in
+                    ForEach(Array(items.enumerated()),id:\.offset){ index,item in
+                        let frameKey = "library-\(page)-\(index)"
                         VStack(alignment:.leading,spacing:8){
                             Text(title).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d))
                             Text(item.0).font(.system(size:14)).foregroundColor(Color(hex:0x59484b)).fixedSize(horizontal:false,vertical:true)
                             Text(item.1).font(.system(size:12)).foregroundColor(Color(hex:0x9b8d8b)).lineLimit(2)
                         }.padding(15).frame(maxWidth:.infinity,alignment:.leading).background(.white,in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xf0e9e7),lineWidth:1))
+                            .background {
+                                if item.2 != nil {
+                                    GeometryReader { proxy in
+                                        Color.clear.preference(key:CardFrames.self,
+                                                               value:[frameKey:proxy.frame(in:.named("card-stage"))])
+                                    }
+                                }
+                            }
                             .contentShape(RoundedRectangle(cornerRadius:16))
                             .onTapGesture {
                                 switch page {
-                                case "saved": if let story=item.2 {withAnimation(transitionAnimation){snapshotStory=story}}
+                                case "saved":
+                                    if let story = item.2 {
+                                        snapshotOrigin = cardFrames[frameKey]
+                                        withAnimation(transitionAnimation){snapshotStory=story}
+                                    }
                                 case "activity": if let key=item.3 {if reviewed.contains(key){reviewed.removeAll{$0==key}}else{reviewed.append(key)};persistLocal()}
-                                default: if let story=item.2 {openDetail(story)}
+                                default: if let story=item.2 {openDetail(story,origin:cardFrames[frameKey])}
                                 }
                             }
                     }
@@ -722,7 +732,7 @@ extension ContentView {
     func openReply(_ answer: NativeAnswer) {
         composerFocused = false
         replyText = ""
-        replyOrigin = replyCardFrames[answer.id]
+        replyOrigin = cardFrames[answer.id]
         withAnimation(transitionAnimation) { selectedReply = answer }
     }
     func closeReply() {
@@ -856,10 +866,20 @@ private struct ReplyCardReveal: AnimatableModifier {
     }
 }
 
+private func fullCardReveal(from card: CGRect?,width: CGFloat,height: CGFloat,radius: CGFloat) -> AnyTransition {
+    guard let card, !card.isEmpty else { return .opacity }
+    let size = CGSize(width:width,height:height)
+    return .modifier(
+        active:StoryContentReveal(progress:0,card:card,size:size,radius:radius),
+        identity:StoryContentReveal(progress:1,card:card,size:size,radius:radius)
+    )
+}
+
 private struct StoryContentReveal: AnimatableModifier {
     var progress: CGFloat
     let card: CGRect
     let size: CGSize
+    let radius: CGFloat
 
     var animatableData: CGFloat {
         get { progress }
@@ -870,7 +890,7 @@ private struct StoryContentReveal: AnimatableModifier {
         let remaining = 1-progress
         let width = card.width*remaining+size.width*progress
         let height = card.height*remaining+size.height*progress
-        let rect = RoundedRectangle(cornerRadius:30*remaining)
+        let rect = RoundedRectangle(cornerRadius:radius*remaining)
         let x = card.minX*remaining
         let y = card.minY*remaining
         return content

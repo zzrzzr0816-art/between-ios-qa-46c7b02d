@@ -41,8 +41,10 @@ struct ContentView: View {
     }
     @State var utility: String? = nil
     @State var selectedReply: NativeAnswer? = nil
-    @State var replyCardFrames: [String: CGRect] = [:]
+    @State var cardFrames: [String: CGRect] = [:]
     @State var replyOrigin: CGRect? = nil
+    @State var detailOrigin: CGRect? = nil
+    @State var snapshotOrigin: CGRect? = nil
     @Namespace var storyTitleMotion
     @State var replyText = ""
     @State var writeText = ""
@@ -146,7 +148,11 @@ struct ContentView: View {
                     bottomNav(width:w,height:h,bottom:bottom,profileActive:true)
                         .zIndex(18).transition(.opacity)
                 }
-                if let story = snapshotStory { snapshotPage(story,width:w,height:h,top:top,bottom:bottom).zIndex(22).transition(.opacity) }
+                if let story = snapshotStory {
+                    snapshotPage(story,width:w,height:h,top:top,bottom:bottom)
+                        .zIndex(22)
+                        .transition(fullCardReveal(from:snapshotOrigin,width:w,height:h,radius:16))
+                }
                 if guideVisible { guideCard(width:w,bottom:bottom).zIndex(29) }
                 if let reason = loginPrompt { loginPromptCard(reason,width:w,height:h,top:top,bottom:bottom).zIndex(31) }
                 if nicknameMode { nicknameSheet(width:w,height:h,top:top,bottom:bottom).zIndex(32) }
@@ -158,7 +164,7 @@ struct ContentView: View {
                 if let text = toastText { toastView(text,bottom:bottom).zIndex(33) }
             }.frame(width:w,height:h)
                 .coordinateSpace(name:"card-stage")
-                .onPreferenceChange(ReplyCardFrames.self) { replyCardFrames = $0 }
+                .onPreferenceChange(CardFrames.self) { cardFrames = $0 }
                 .clipped().offset(y:-top)
         }.ignoresSafeArea(.keyboard)
             .background { H5Design.background.ignoresSafeArea() }
@@ -548,7 +554,7 @@ struct ContentView: View {
             if long {
                 ScrollView(.vertical,showsIndicators:false){
                     storyTitle(story,width:width).frame(maxWidth:.infinity)
-                        .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:false,expanded:detailStory?.id == story.id))
+                        .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:false,expanded:detailOrigin == nil && detailStory?.id == story.id))
                         .background {
                             if interactive {
                                 GeometryReader { proxy in
@@ -567,7 +573,7 @@ struct ContentView: View {
                 Text(l("上下拖动阅读全文","Drag to read")).font(.system(size:11)).foregroundColor(H5Design.muted).padding(.top,8)
             } else {
                 storyTitle(story,width:width).frame(maxWidth:.infinity)
-                    .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:false,expanded:detailStory?.id == story.id))
+                    .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:false,expanded:detailOrigin == nil && detailStory?.id == story.id))
                     .padding(.top,20)
             }
             if let detail = story.detail, !detail.isEmpty {
@@ -603,9 +609,10 @@ struct ContentView: View {
         if page == "write" { return .move(edge:.bottom) }
         return .opacity
     }
-    func openDetail(_ story:NativeStory){
+    func openDetail(_ story:NativeStory,origin:CGRect? = nil){
         guard !model.loading, let i=model.stories.firstIndex(where:{$0.id==story.id}) else { return }
         model.index=i
+        detailOrigin = origin
         withAnimation(transitionAnimation){detailStory=story}
     }
     func companions(width:CGFloat,top:CGFloat,height:CGFloat)->some View {
@@ -948,16 +955,21 @@ struct StoryTitlePosition: ViewModifier {
     let namespace: Namespace.ID
     let destination: Bool
     let expanded: Bool
+    var enabled = true
 
-    func body(content: Content) -> some View {
-        content.matchedGeometryEffect(
-            id:id,in:namespace,properties:.position,anchor:.top,isSource:destination == expanded
-        )
-        .opacity(destination || !expanded ? 1 : 0)
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled {
+            content.matchedGeometryEffect(
+                id:id,in:namespace,properties:.position,anchor:.top,isSource:destination == expanded
+            )
+            .opacity(destination || !expanded ? 1 : 0)
+        } else {
+            content
+        }
     }
 }
 
-struct ReplyCardFrames: PreferenceKey {
+struct CardFrames: PreferenceKey {
     static let defaultValue: [String: CGRect] = [:]
 
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
