@@ -22,10 +22,17 @@ permissions:
   contents: read
 jobs:
   interactive:
-    runs-on: macos-latest
+    runs-on: macos-15
     timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
+      - name: Select stable Xcode and simulator
+        run: |
+          if [ -d /Applications/Xcode_16.4.app ]; then
+            sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+          fi
+          xcodebuild -version
+          xcrun simctl list runtimes
       - name: Build native app
         run: |
           xcodebuild -project Between.xcodeproj -target Between -configuration Debug -sdk iphonesimulator CONFIGURATION_BUILD_DIR="$RUNNER_TEMP/between-build" CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/build.log" || { cat "$RUNNER_TEMP/build.log"; exit 1; }
