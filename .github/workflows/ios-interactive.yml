@@ -55,7 +55,7 @@ jobs:
           mise run build
       - name: Boot iPhone simulator
         if: inputs.companion_check || inputs.open_viewer
-        timeout-minutes: 6
+        timeout-minutes: 10
         working-directory: ${{ runner.temp }}/sim-remote
         run: |
           set -euo pipefail
@@ -66,6 +66,7 @@ jobs:
           echo "BETWEEN_SIMULATOR_UDID=$DEVICE" >> "$GITHUB_ENV"
           xcrun simctl boot "$DEVICE"
           open -a "$(xcode-select -p)/Applications/Simulator.app" --args -CurrentDeviceUDID "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
           xcrun simctl list devices booted
           for attempt in $(seq 1 40); do
             if xcrun simctl io "$DEVICE" screenshot "$RUNNER_TEMP/between-boot.png" >/dev/null 2>&1 \
@@ -79,7 +80,7 @@ jobs:
           exit 1
       - name: Run native companion interaction checks
         if: inputs.companion_check
-        timeout-minutes: 5
+        timeout-minutes: 8
         working-directory: ${{ runner.temp }}/sim-remote
         env:
           BETWEEN_APP: ${{ runner.temp }}/between-build/Between.app

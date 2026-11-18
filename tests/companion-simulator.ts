@@ -28,7 +28,7 @@ if (!sim) throw new Error('No booted iOS simulator');
 
 const bundle = 'com.example.between.preview';
 function simctl(...args: string[]) {
-  execFileSync('xcrun', ['simctl', ...args], { stdio: 'inherit', timeout: 45_000 });
+  execFileSync('xcrun', ['simctl', ...args], { stdio: 'inherit', timeout: 90_000 });
 }
 
 const supervisor = new CompanionSupervisor();
