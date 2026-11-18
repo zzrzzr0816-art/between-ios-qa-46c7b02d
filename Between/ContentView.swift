@@ -110,7 +110,7 @@ struct ContentView: View {
                 }.frame(width:w,height:h)
                 if let chosen = camp {
                     Color(hex:0x302532).opacity(0.12*Double(campProgress)).allowsHitTesting(false).zIndex(detailStory != nil ? 22.5:0.5)
-                    comments(chosen,width:w,height:h,top:top,bottom:bottom).offset(x:-chosen.sign*w*(1-campProgress)).allowsHitTesting((campProgress>0.99 || axis==.returnFromComments || axis==.scrollComments) && !settling && axis != .openComments && axis != .detailHandle).zIndex(detailStory != nil ? 23:2)
+                    comments(chosen,width:w,height:h,top:top,bottom:bottom).offset(x:-chosen.sign*w*(1-campProgress)).allowsHitTesting((campProgress>0.99 || axis == .returnFromComments || axis == .scrollComments) && !settling && axis != .openComments && axis != .detailHandle).zIndex(detailStory != nil ? 23:2)
                 }
                 companions(width:w,top:top,height:h).zIndex(companionsLayer)
                 if utility != nil {
