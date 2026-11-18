@@ -1,0 +1,21 @@
+name: Native iOS simulator build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run local state regression checks
+        run: |
+          {
+            printf 'import Foundation\n'
+            awk '/^struct NativeFeed:/ { exit } NR > 1' Between/NativeModels.swift
+            cat tests/native-local-state.swift
+          } > "$RUNNER_TEMP/between-local-state.swift"
+          swift "$RUNNER_TEMP/between-local-state.swift"
+      - name: Build without code signing
+        run: xcodebuild -project Between.xcodeproj -target Between -configuration Debug -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build
