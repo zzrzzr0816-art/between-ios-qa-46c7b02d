@@ -90,8 +90,6 @@ extension ContentView {
                 Button {openReport("answer",answer.id)} label:{Text("⚑ "+l("举报","Report")).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d)).padding(.leading,8).frame(height:26)}.buttonStyle(.plain)
             }
             answerText(answer.text)
-                .opacity(selectedReply?.id == answer.id ? 0 : 1)
-                .animation(nil,value:selectedReply?.id)
             HStack(spacing:8){
                 Button {
                     guard requireLogin("like") else{return}
@@ -125,6 +123,12 @@ extension ContentView {
                 RoundedRectangle(cornerRadius:18).fill(.white)
                     .overlay(RoundedRectangle(cornerRadius:18).stroke(Color(hex:0xf0e9e7),lineWidth:1))
                     .shadow(color:Color(hex:0x806a68).opacity(0.06),radius:8,y:4)
+            }
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key:ReplyCardFrames.self,
+                                           value:[answer.id:proxy.frame(in:.named("card-stage"))])
+                }
             }
             .contentShape(RoundedRectangle(cornerRadius:18))
             .onTapGesture {openReply(answer)}
@@ -397,25 +401,35 @@ extension ContentView {
     }
     func detailPage(_ story:NativeStory,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
         ZStack(alignment:.top){
-            H5Design.background
+            H5Design.card
+                .background(Color(hex:0xfffbf8))
                 .allowsHitTesting(false)
             VStack(spacing:0){
                 HStack{
                     Button {withAnimation(transitionAnimation){detailStory=nil}} label:{Text("‹").font(.system(size:32,weight:.light)).foregroundColor(Color(hex:0x6a5457)).frame(width:44,height:44)}.accessibilityLabel(l("返回","Back"))
                     Spacer()
-                }.padding(.horizontal,10).padding(.top,top+6)
+                }.padding(.horizontal,10).padding(.top,top+6).modifier(DetailAddition())
                 ScrollView {
                     VStack(alignment:.leading,spacing:0){
-                        Text(l("一则匿名心事","AN ANONYMOUS THOUGHT")).font(.system(size:10,weight:.semibold)).kerning(1.2).foregroundColor(Color(hex:0x8f7274)).padding(.top,10)
-                        (Text(story.text)+(story.detail.map{Text("\n\n"+$0)} ?? Text(""))).font(.system(size:20,weight:.semibold)).foregroundColor(Color(hex:0x433539)).lineSpacing(7).fixedSize(horizontal:false,vertical:true).padding(.top,16)
-                        Text("✦").font(.system(size:15)).foregroundColor(Color(hex:0xc49a8f)).frame(maxWidth:.infinity).padding(.top,26)
-                        ForEach(updates[story.id] ?? [],id:\.self){u in
-                            Text(l("后续进展","Update")+" · "+u).font(.system(size:12)).foregroundColor(Color(hex:0x816e75)).padding(.top,10)
+                        Text(l("一则匿名心事","AN ANONYMOUS THOUGHT")).font(.system(size:10,weight:.semibold)).kerning(1.2).foregroundColor(Color(hex:0x8f7274)).padding(.top,10).modifier(DetailAddition())
+                        storyTitle(story,width:width)
+                            .frame(width:max(1,width-104))
+                            .frame(maxWidth:.infinity)
+                            .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:true,expanded:true))
+                            .padding(.top,16)
+                        if let detail = story.detail, !detail.isEmpty {
+                            Text(detail).font(.system(size:16)).lineSpacing(6)
+                                .foregroundColor(Color(hex:0x433539))
+                                .fixedSize(horizontal:false,vertical:true).padding(.top,18).modifier(DetailAddition())
                         }
-                        Text("◷ \(story.hoursRemaining()) \(l("小时后消失","hours left"))  ·  \(story.answers.count) \(l("条建议","responses"))").font(.system(size:12)).foregroundColor(Color(hex:0x9a8888)).padding(.top,18)
+                        Text("✦").font(.system(size:15)).foregroundColor(Color(hex:0xc49a8f)).frame(maxWidth:.infinity).padding(.top,26).modifier(DetailAddition())
+                        ForEach(updates[story.id] ?? [],id:\.self){u in
+                            Text(l("后续进展","Update")+" · "+u).font(.system(size:12)).foregroundColor(Color(hex:0x816e75)).padding(.top,10).modifier(DetailAddition())
+                        }
+                        Text("◷ \(story.hoursRemaining()) \(l("小时后消失","hours left"))  ·  \(story.answers.count) \(l("条建议","responses"))").font(.system(size:12)).foregroundColor(Color(hex:0x9a8888)).padding(.top,18).modifier(DetailAddition())
                     }.padding(.horizontal,26).padding(.bottom,40)
                 }
-                Text(l("点一下小伙伴，看看两边的想法","Tap a companion to see each side")).font(.system(size:11)).foregroundColor(Color(hex:0x8b7678)).padding(.bottom,bottom+22)
+                Text(l("点一下小伙伴，看看两边的想法","Tap a companion to see each side")).font(.system(size:11)).foregroundColor(Color(hex:0x8b7678)).padding(.bottom,bottom+22).modifier(DetailAddition())
             }
             .frame(width:width,height:height)
         }.frame(width:width,height:height)
@@ -708,6 +722,7 @@ extension ContentView {
     func openReply(_ answer: NativeAnswer) {
         composerFocused = false
         replyText = ""
+        replyOrigin = replyCardFrames[answer.id]
         withAnimation(transitionAnimation) { selectedReply = answer }
     }
     func closeReply() {
@@ -798,8 +813,49 @@ extension ContentView {
             .shadow(color:Color(hex:0x45313a).opacity(0.12),radius:12,y:5)
             .position(x:width/2,y:dialogCenter)
         }.frame(width:width,height:height).id(answer.id)
+            .transition(replyReveal(
+                from:replyOrigin,
+                to:CGRect(x:(width-dialogWidth)/2,y:dialogCenter-dialogH/2,width:dialogWidth,height:dialogH)
+            ))
     }
 }
+private func replyReveal(from source: CGRect?, to target: CGRect) -> AnyTransition {
+    guard let source, !source.isEmpty else { return .opacity }
+    return .modifier(
+        active:ReplyCardReveal(progress:0,source:source,target:target),
+        identity:ReplyCardReveal(progress:1,source:source,target:target)
+    )
+}
+
+private struct ReplyCardReveal: AnimatableModifier {
+    var progress: CGFloat
+    let source: CGRect
+    let target: CGRect
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let start = 1-progress
+        let width = source.width*start+target.width*progress
+        let height = source.height*start+target.height*progress
+        let x = source.minX*start+target.minX*progress
+        let y = source.minY*start+target.minY*progress
+        let shape = RoundedRectangle(cornerRadius:18+2*progress)
+        return ZStack(alignment:.topLeading) {
+            shape.fill(.white)
+                .frame(width:width,height:height).offset(x:x,y:y)
+                .opacity(Double(start))
+            content.opacity(Double(progress))
+        }
+        .mask(alignment:.topLeading) {
+            shape.frame(width:width,height:height).offset(x:x,y:y)
+        }
+    }
+}
+
 private struct StoryContentReveal: AnimatableModifier {
     var progress: CGFloat
     let card: CGRect
@@ -817,17 +873,30 @@ private struct StoryContentReveal: AnimatableModifier {
         let rect = RoundedRectangle(cornerRadius:30*remaining)
         let x = card.minX*remaining
         let y = card.minY*remaining
-        return ZStack(alignment:.topLeading) {
-            rect.fill(H5Design.card)
-                .opacity(min(1,Double(progress)*8))
-                .frame(width:width,height:height)
-                .offset(x:x,y:y)
-            content
-                .opacity(Double(progress))
-                .mask(alignment:.topLeading) {
-                    rect.frame(width:width,height:height).offset(x:x,y:y)
-                }
-        }
+        return content
+            .environment(\.detailRevealProgress,Double(progress))
+            .mask(alignment:.topLeading) {
+                rect.frame(width:width,height:height).offset(x:x,y:y)
+            }
+    }
+}
+
+private struct DetailRevealProgress: EnvironmentKey {
+    static let defaultValue: Double = 1
+}
+
+private extension EnvironmentValues {
+    var detailRevealProgress: Double {
+        get { self[DetailRevealProgress.self] }
+        set { self[DetailRevealProgress.self] = newValue }
+    }
+}
+
+private struct DetailAddition: ViewModifier {
+    @Environment(\.detailRevealProgress) private var progress
+
+    func body(content: Content) -> some View {
+        content.opacity(max(0,min(1,(progress-0.32)/0.68)))
     }
 }
 

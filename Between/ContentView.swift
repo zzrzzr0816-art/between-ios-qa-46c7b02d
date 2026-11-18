@@ -41,6 +41,9 @@ struct ContentView: View {
     }
     @State var utility: String? = nil
     @State var selectedReply: NativeAnswer? = nil
+    @State var replyCardFrames: [String: CGRect] = [:]
+    @State var replyOrigin: CGRect? = nil
+    @Namespace var storyTitleMotion
     @State var replyText = ""
     @State var writeText = ""
     @State var updateText = ""
@@ -113,7 +116,7 @@ struct ContentView: View {
                     .blur(radius: reduceMotion || !motionOn ? 0 : 5*campProgress)
                     .accessibilityHidden(camp != nil || utility != nil || detailStory != nil || snapshotStory != nil || loginPrompt != nil)
                 if let chosen = camp {
-                    comments(chosen,width:w,height:h,top:top,bottom:bottom).offset(x:-chosen.sign*w*(1-campProgress)).allowsHitTesting((campProgress>0.99 || axis == .returnFromComments || axis == .scrollComments) && !settling && axis != .openComments)
+                    comments(chosen,width:w,height:h,top:top,bottom:bottom).allowsHitTesting((campProgress>0.99 || axis == .returnFromComments || axis == .scrollComments) && !settling && axis != .openComments)
                         .opacity(Double(campProgress))
                         .accessibilityHidden(settling || campProgress < 0.99 || selectedReply != nil || utility == "report" || loginPrompt != nil)
                         .zIndex(detailStory != nil ? 23:2)
@@ -122,10 +125,13 @@ struct ContentView: View {
                 if utility != nil {
                     Color(hex:0x302532).opacity(0.40).zIndex(utility == "report" ? 29.5 : 5).contentShape(Rectangle()).onTapGesture{closeUtility()}.transition(.opacity)
                 }
+                if companionMode == .profile || companionMode == .library {
+                    Color(hex:0xfffaf8).zIndex(9).allowsHitTesting(false)
+                }
                 if let page = utility {
                     utilityPage(page,width:w,height:h,top:top,bottom:bottom).id(page).zIndex(page == "report" ? 30 : 10).transition(pageTransition(page))
                 }
-                if let answer = selectedReply { replyOverlay(answer,width:w,height:h,top:top,bottom:bottom).zIndex(29).transition(.offset(y:12).combined(with:.opacity)) }
+                if let answer = selectedReply { replyOverlay(answer,width:w,height:h,top:top,bottom:bottom).zIndex(29) }
                 if let story = detailStory {
                     detailPage(story,width:w,height:h,top:top,bottom:bottom)
                         .accessibilityHidden(camp != nil || loginPrompt != nil || utility == "report")
@@ -150,7 +156,10 @@ struct ContentView: View {
                 }
                 #endif
                 if let text = toastText { toastView(text,bottom:bottom).zIndex(33) }
-            }.frame(width:w,height:h).clipped().offset(y:-top)
+            }.frame(width:w,height:h)
+                .coordinateSpace(name:"card-stage")
+                .onPreferenceChange(ReplyCardFrames.self) { replyCardFrames = $0 }
+                .clipped().offset(y:-top)
         }.ignoresSafeArea(.keyboard)
             .background { H5Design.background.ignoresSafeArea() }
             .foregroundColor(H5Design.ink).tint(H5Design.ink).buttonStyle(.plain)
@@ -538,7 +547,8 @@ struct ContentView: View {
             Text("✦").font(.system(size:27)).foregroundColor(Color(hex:0xd7958c)).frame(height:32).padding(.top,34)
             if long {
                 ScrollView(.vertical,showsIndicators:false){
-                    Text(story.text).font(.system(size:H5Design.titleSize(width),weight:.bold)).tracking(-0.8).lineSpacing(max(0,H5Design.titleSize(width)*1.35-UIFont.systemFont(ofSize:H5Design.titleSize(width),weight:.bold).lineHeight)).multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity)
+                    storyTitle(story,width:width).frame(maxWidth:.infinity)
+                        .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:false,expanded:detailStory?.id == story.id))
                         .background {
                             if interactive {
                                 GeometryReader { proxy in
@@ -556,7 +566,9 @@ struct ContentView: View {
                     }.padding(.top,20)
                 Text(l("上下拖动阅读全文","Drag to read")).font(.system(size:11)).foregroundColor(H5Design.muted).padding(.top,8)
             } else {
-                Text(story.text).font(.system(size:H5Design.titleSize(width),weight:.bold)).tracking(-0.8).lineSpacing(max(0,H5Design.titleSize(width)*1.35-UIFont.systemFont(ofSize:H5Design.titleSize(width),weight:.bold).lineHeight)).multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true).padding(.top,20).frame(maxWidth:.infinity)
+                storyTitle(story,width:width).frame(maxWidth:.infinity)
+                    .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:false,expanded:detailStory?.id == story.id))
+                    .padding(.top,20)
             }
             if let detail = story.detail, !detail.isEmpty {
                 Text(detail).font(.system(size:15)).foregroundColor(Color(hex:0x5e5259)).lineSpacing(max(0,15*1.65-UIFont.systemFont(ofSize:15).lineHeight)).multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true).padding(.top,12).frame(maxWidth:370).frame(maxHeight:UIScreen.main.bounds.height*0.24,alignment:.top).clipped()
@@ -576,10 +588,20 @@ struct ContentView: View {
             .contentShape(RoundedRectangle(cornerRadius:30))
             .onTapGesture {if interactive && axis == nil && !settling && camp == nil {openDetail(story)}}
     }
+    func storyTitle(_ story: NativeStory,width: CGFloat) -> some View {
+        let size = H5Design.titleSize(width)
+        return Text(story.text)
+            .font(.system(size:size,weight:.bold))
+            .tracking(-0.8)
+            .lineSpacing(max(0,size*1.35-UIFont.systemFont(ofSize:size,weight:.bold).lineHeight))
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal:false,vertical:true)
+    }
+
     func pageTransition(_ page:String)->AnyTransition {
         if page == "more" { return .move(edge:.bottom) }
         if page == "write" { return .move(edge:.bottom) }
-        return .opacity.combined(with:.scale(scale:0.985))
+        return .opacity
     }
     func openDetail(_ story:NativeStory){
         guard !model.loading, let i=model.stories.firstIndex(where:{$0.id==story.id}) else { return }
@@ -765,7 +787,10 @@ struct ContentView: View {
         Button {
             guard let story = detailStory, camp == nil else { return }
             discussionID = story.id
-            withAnimation(transitionAnimation){camp=side;campProgress=1}
+            withAnimation(transitionAnimation) {
+                camp = side
+                campProgress = 1
+            }
         } label: {
             Color.clear.frame(width:48,height:64).contentShape(Rectangle())
         }
@@ -918,6 +943,28 @@ private struct CompanionPlacement:Equatable {
         }
     }
 }
+struct StoryTitlePosition: ViewModifier {
+    let id: String
+    let namespace: Namespace.ID
+    let destination: Bool
+    let expanded: Bool
+
+    func body(content: Content) -> some View {
+        content.matchedGeometryEffect(
+            id:id,in:namespace,properties:.position,anchor:.top,isSource:destination == expanded
+        )
+        .opacity(destination || !expanded ? 1 : 0)
+    }
+}
+
+struct ReplyCardFrames: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { _, newest in newest }
+    }
+}
+
 private struct StorySlide: AnimatableModifier {
     var progress: CGFloat
     let travel: CGFloat

@@ -501,6 +501,12 @@ html[data-motion] .app[data-leader] .buddy[data-grabbed=true] .eye{animation:non
 .app[data-leader=devil] .buddy-devil:not([data-grabbed]):not([data-pulled]) .smile{width:12px;height:7px;transform:translateX(-50%) rotate(-8deg)}
 .app[data-leader=angel] .buddy-devil:not([data-grabbed]):not([data-pulled]) .smile{width:8px;height:4px;border-bottom:0;border-top:1.8px solid #795356;border-radius:9px 9px 0 0;transform:translateX(-50%) rotate(4deg)}
 .app[data-leader] .buddy-devil[data-tap=winning] .smile{width:12px!important;height:7px!important;border:0!important;border-bottom:1.8px solid #795356!important;background:transparent!important;border-radius:0 0 10px 10px!important}
+/* Interpolate the reaction inputs without restarting the idle keyframes. */
+@property --cheer{syntax:"<number>";inherits:true;initial-value:0}
+@property --reply{syntax:"<number>";inherits:true;initial-value:0}
+@property --spark-level{syntax:"<number>";inherits:true;initial-value:0}
+.companions .buddy{transition-property:scale,opacity,transform,--cheer,--reply,--spark-level;transition-duration:.34s,.34s,.3s,.42s,.42s,.5s}
+.buddy .smile,.app[data-leader] .buddy .smile{transition:width .36s ease,height .36s ease,bottom .36s ease,border-radius .36s ease,background-color .36s ease,border-color .36s ease,border-width .36s ease,transform .36s ease}
 html,body{margin:0;padding:0;background:transparent;overflow:visible;width:250px;height:250px;-webkit-text-size-adjust:100%;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;color:#302b32}
 .app{position:relative;width:250px;height:250px;margin:0;overflow:visible;background:none;box-shadow:none;--bob:0}
 .companions{position:absolute;left:96px;top:96px;width:58px;height:58px;display:flex;justify-content:space-between;pointer-events:none}
@@ -520,7 +526,9 @@ window.setLang = function (zh) {
   document.documentElement.lang = zh ? 'zh' : 'en';
 };
 window.setMotion = function (on) {
-  document.documentElement.dataset.motion = on ? 'on' : 'off';
+  const mode = on ? 'on' : 'off';
+  if (document.documentElement.dataset.motion === mode) return;
+  document.documentElement.dataset.motion = mode;
   if (!on) {
     buddyCancel();
     clearBuddyTap();
@@ -528,8 +536,8 @@ window.setMotion = function (on) {
   }
 };
 window.setState = function (leader, gap) {
-  app.dataset.leader = leader;
-  app.dataset.gap = gap;
+  if (app.dataset.leader !== leader) app.dataset.leader = leader;
+  if (app.dataset.gap !== gap) app.dataset.gap = gap;
 };
 
 window.buddyDown = function () {
