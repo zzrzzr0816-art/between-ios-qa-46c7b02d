@@ -1,6 +1,9 @@
 import SwiftUI
 import UIKit
 
+private let replyCardSurface = Color(hex:0xfffdf7)
+private let replyCardBorder = Color(hex:0xebe0d5)
+
 extension ContentView {
     // MARK: - Conversation side panel
     func comments(_ chosen:NativeCamp,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
@@ -121,8 +124,8 @@ extension ContentView {
             }.padding(.top,12)
         }.padding(16).frame(maxWidth:.infinity,alignment:.leading)
             .background {
-                RoundedRectangle(cornerRadius:18).fill(.white)
-                    .overlay(RoundedRectangle(cornerRadius:18).stroke(Color(hex:0xf0e9e7),lineWidth:1))
+                RoundedRectangle(cornerRadius:18).fill(replyCardSurface)
+                    .overlay(RoundedRectangle(cornerRadius:18).strokeBorder(replyCardBorder,lineWidth:1))
                     .shadow(color:Color(hex:0x806a68).opacity(0.06),radius:8,y:4)
             }
             .background {
@@ -752,7 +755,7 @@ extension ContentView {
         let dialogWidth = max(1,width-32)
         let side = NativeCamp(rawValue:answer.side)
         let accent = side?.accent ?? H5Design.muted
-        let surface = Color(hex:0xf5efea)
+        let surface = side?.background ?? Color(hex:0xfffbf9)
         return ZStack(alignment:.topLeading){
             Color.clear.contentShape(Rectangle()).onTapGesture{closeReply()}
             VStack(alignment:.leading,spacing:0){
@@ -776,7 +779,7 @@ extension ContentView {
                                 Image(systemName:"heart").font(.system(size:14,weight:.light))
                                 Text("\(answer.likes)").font(.system(size:12))
                             }.foregroundColor(Color(hex:0x897a7a)).padding(.horizontal,11).frame(height:36).background(Color(hex:0xf8f4f2),in:Capsule())
-                        }.padding(14).frame(maxWidth:.infinity,alignment:.leading).background(.white,in:RoundedRectangle(cornerRadius:18)).overlay(RoundedRectangle(cornerRadius:18).stroke(Color(hex:0xf0e9e7),lineWidth:1))
+                        }.padding(14).frame(maxWidth:.infinity,alignment:.leading).background(replyCardSurface,in:RoundedRectangle(cornerRadius:18)).overlay(RoundedRectangle(cornerRadius:18).strokeBorder(replyCardBorder,lineWidth:1))
 
                         if answer.replies.isEmpty {
                             Text(l("还没有回复，来接住这句话吧。","No replies yet. Be the first to respond.")).font(.system(size:14)).foregroundColor(Color(hex:0xa09494)).frame(maxWidth:.infinity).padding(.vertical,12)
@@ -793,7 +796,7 @@ extension ContentView {
                                         Text(reply.text).font(.system(size:13)).foregroundColor(Color(hex:0x6d5f66)).lineSpacing(4).fixedSize(horizontal:false,vertical:true)
                                     }
                                     Spacer(minLength:0)
-                                }.padding(14).frame(maxWidth:.infinity,alignment:.leading).background(.white,in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xf0e9e7),lineWidth:1))
+                                }.padding(14).frame(maxWidth:.infinity,alignment:.leading).background(replyCardSurface,in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).strokeBorder(replyCardBorder,lineWidth:1))
                                     .transition(.move(edge:.bottom).combined(with:.opacity))
                                     .animation(reduceMotion || !motionOn ? nil:.easeOut(duration:0.3).delay(Double(min(idx,6))*0.04),value:answer.replies.count)
                             }
@@ -854,7 +857,7 @@ private struct ReplyCardReveal: AnimatableModifier {
         let y = source.minY*start+target.minY*progress
         let shape = RoundedRectangle(cornerRadius:18+2*progress)
         return ZStack(alignment:.topLeading) {
-            shape.fill(.white)
+            shape.fill(replyCardSurface)
                 .frame(width:width,height:height).offset(x:x,y:y)
                 .opacity(Double(start))
             content.opacity(Double(progress))
