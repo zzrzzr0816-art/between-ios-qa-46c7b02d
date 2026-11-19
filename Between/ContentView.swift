@@ -155,7 +155,12 @@ struct ContentView: View {
                 if let page = utility, page != "profile" {
                     utilityPage(page,width:w,height:h,top:top,bottom:bottom).accessibilityHidden(selectedReport != nil).id(page).zIndex(page == "report" ? 30 : (companionMode == .library ? 11 : 10)).transition(pageTransition(page))
                 }
-                if let record = selectedReport { reportDetailCard(record,width:w,height:h,top:top,bottom:bottom).zIndex(29) }
+                if let record = selectedReport {
+                    Color(hex:0x302532).opacity(0.22).contentShape(Rectangle())
+                        .onTapGesture { withAnimation(transitionAnimation) { selectedReport = nil } }
+                        .accessibilityHidden(true).transition(.opacity).zIndex(28.5)
+                    reportDetailCard(record,width:w,height:h,top:top,bottom:bottom).zIndex(29)
+                }
                 if let answer = selectedReply { replyOverlay(answer,width:w,height:h,top:top,bottom:bottom).zIndex(29) }
                 if let story = detailStory {
                     detailPage(story,width:w,height:h,top:top,bottom:bottom)
