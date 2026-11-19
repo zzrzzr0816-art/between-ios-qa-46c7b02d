@@ -473,3 +473,55 @@ enum BetweenPreviewMode {
         #endif
     }
 }
+
+
+struct SharedMusicLink {
+    let url: URL
+    let platform: String
+    let range: Range<String.Index>
+
+    private static let urls = try! NSRegularExpression(pattern: #"https?://[^\s<>"，。！？；、）」】]+"#,options:.caseInsensitive)
+
+    static func links(in text: String) -> [Self] {
+        let trailing = CharacterSet(charactersIn:".,;!?)]}’”")
+        return urls.matches(in:text,range:NSRange(text.startIndex...,in:text)).compactMap { match in
+            guard let range = Range(match.range,in:text) else { return nil }
+            let raw = text[range].trimmingCharacters(in:trailing)
+            guard let url = URL(string:raw), let host = url.host?.lowercased(),
+                  url.user == nil, url.password == nil,
+                  ["http","https"].contains(url.scheme?.lowercased() ?? ""),
+                  let platform = platform(host:host,url:url) else { return nil }
+            return Self(url:url,platform:platform,
+                        range:range.lowerBound..<text.index(range.lowerBound,offsetBy:raw.count))
+        }
+    }
+
+    private static func platform(host: String,url: URL) -> String? {
+        let path = url.path.lowercased()
+        switch host {
+        case "open.spotify.com": return path.range(of:#"/track/[^/]+"#,options:.regularExpression) != nil ? "Spotify" : nil
+        case "spotify.link": return path.count > 1 ? "Spotify" : nil
+        case "music.apple.com":
+            return path.contains("/song/") || (path.contains("/album/") && URLComponents(url:url,resolvingAgainstBaseURL:false)?.queryItems?.contains { $0.name == "i" && $0.value?.isEmpty == false } == true) ? "Apple Music" : nil
+        case "music.163.com", "y.music.163.com":
+            return path.contains("/song") || url.fragment?.hasPrefix("/song") == true || path.hasPrefix("/m/song") ? "网易云音乐" : nil
+        case "163cn.tv": return path.count > 1 ? "网易云音乐" : nil
+        case "y.qq.com", "i.y.qq.com", "c.y.qq.com":
+            return path.contains("/song") || path.contains("songdetail") || path.contains("playsong") ? "QQ 音乐" : nil
+        case "url.cn": return nil
+        case "www.kugou.com", "m.kugou.com", "www3.kugou.com", "t1.kugou.com", "t2.kugou.com":
+            return path.contains("/song") || path.contains("/share") || path.count > 1 && host.hasPrefix("t") ? "酷狗音乐" : nil
+        case "music.youtube.com":
+            return path == "/watch" && URLComponents(url:url,resolvingAgainstBaseURL:false)?.queryItems?.contains { $0.name == "v" && $0.value?.isEmpty == false } == true ? "YouTube Music" : nil
+        case "soundcloud.com", "www.soundcloud.com":
+            return url.pathComponents.count == 3 && !path.contains("/sets/") ? "SoundCloud" : nil
+        case "on.soundcloud.com": return path.count > 1 ? "SoundCloud" : nil
+        case "www.deezer.com", "deezer.com": return path.contains("/track/") ? "Deezer" : nil
+        case "deezer.page.link", "link.deezer.com": return path.count > 1 ? "Deezer" : nil
+        case "tidal.com", "listen.tidal.com": return path.contains("/track/") ? "TIDAL" : nil
+        case "music.amazon.com": return path.contains("/tracks/") ? "Amazon Music" : nil
+        case "streetvoice.com", "www.streetvoice.com": return path.contains("/songs/") ? "StreetVoice" : nil
+        default: return nil
+        }
+    }
+}

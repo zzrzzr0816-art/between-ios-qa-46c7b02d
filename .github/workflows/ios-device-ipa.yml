@@ -26,7 +26,7 @@ jobs:
         run: |
           settings=()
           if [[ "$LIVE_SYNC" == "true" ]]; then
-            settings+=(SWIFT_ACTIVE_COMPILATION_CONDITIONS=BETWEEN_LIVE_PLAYTEST PRODUCT_BUNDLE_IDENTIFIER=com.example.between.livetest "INFOPLIST_KEY_CFBundleDisplayName=Between Live Test" CURRENT_PROJECT_VERSION=16)
+            settings+=(SWIFT_ACTIVE_COMPILATION_CONDITIONS=BETWEEN_LIVE_PLAYTEST PRODUCT_BUNDLE_IDENTIFIER=com.example.between.livetest "INFOPLIST_KEY_CFBundleDisplayName=Between Live Test" CURRENT_PROJECT_VERSION=17)
           elif [[ "$PREVIEW_LOGIN" == "true" ]]; then
             settings+=(SWIFT_ACTIVE_COMPILATION_CONDITIONS=BETWEEN_DEVICE_PREVIEW PRODUCT_BUNDLE_IDENTIFIER=com.example.between.playtest "INFOPLIST_KEY_CFBundleDisplayName=Between Test" CURRENT_PROJECT_VERSION=14)
           fi

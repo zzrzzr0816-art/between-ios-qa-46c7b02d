@@ -145,12 +145,48 @@ extension ContentView {
             .accessibilityHidden(selectedReply?.id == answer.id)
     }
     private func answerText(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size:14))
-            .lineSpacing(max(0,14*1.6-UIFont.systemFont(ofSize:14).lineHeight))
-            .fixedSize(horizontal:false,vertical:true)
-            .frame(maxWidth:.infinity,alignment:.leading)
-            .padding(.vertical,12)
+        let link = SharedMusicLink.links(in:text).first
+        let message = link.map { text.replacingCharacters(in:$0.range,with:"") } ?? text
+        let trimmed = message.trimmingCharacters(in:.whitespacesAndNewlines)
+        return VStack(alignment:.leading,spacing:8) {
+            if !trimmed.isEmpty {
+                Text(trimmed)
+                    .font(.system(size:14))
+                    .lineSpacing(max(0,14*1.6-UIFont.systemFont(ofSize:14).lineHeight))
+                    .fixedSize(horizontal:false,vertical:true)
+            }
+            if let link { musicCard(link) }
+        }.frame(maxWidth:.infinity,alignment:.leading).padding(.vertical,12)
+    }
+
+    private func musicCard(_ link: SharedMusicLink) -> some View {
+        Link(destination:link.url) {
+            HStack(spacing:10) {
+                Image(systemName:"music.note")
+                    .font(.system(size:16,weight:.semibold))
+                    .foregroundColor(Color(hex:0xa36660))
+                    .frame(width:34,height:34)
+                    .background(Color(hex:0xf4e3df),in:RoundedRectangle(cornerRadius:10))
+                    .accessibilityHidden(true)
+                VStack(alignment:.leading,spacing:3) {
+                    Text(link.platform).font(.system(size:13,weight:.semibold))
+                    Text(l("打开歌曲","Open track")).font(.system(size:11)).foregroundColor(H5Design.muted)
+                }
+                Spacer(minLength:8)
+                Image(systemName:"arrow.up.right").font(.system(size:12,weight:.semibold))
+                    .foregroundColor(H5Design.muted).accessibilityHidden(true)
+            }.padding(10).foregroundColor(H5Design.ink)
+                .background(Color(hex:0xfcf4ef),in:RoundedRectangle(cornerRadius:14))
+                .overlay(RoundedRectangle(cornerRadius:14).strokeBorder(Color(hex:0xebdcd3),lineWidth:1))
+        }.buttonStyle(PressScale())
+    }
+
+    private func allowsSingleMusicLink(_ text: String) -> Bool {
+        guard SharedMusicLink.links(in:text).count <= 1 else {
+            toast(l("每条评论或回复只能分享一首歌","Share one track per comment or reply"))
+            return false
+        }
+        return true
     }
 
     func closeComments(){
@@ -160,7 +196,7 @@ extension ContentView {
     }
     func sendPreview(_ chosen:NativeCamp){
         let text=composer.trimmingCharacters(in:.whitespacesAndNewlines);guard !text.isEmpty else{return}
-        guard requireLogin("respond") else{return}
+        guard allowsSingleMusicLink(text), requireLogin("respond") else{return}
         guard text.count<=1000 else{toast(l("最多输入 1000 字","Limit: 1,000 characters"));return}
         guard camp == chosen, let story = discussionStory,
               story.created/1000+86400 > Date().timeIntervalSince1970 else { return }
@@ -451,7 +487,7 @@ extension ContentView {
     }
     func appendReply(_ answer:NativeAnswer){
         let text=replyText.trimmingCharacters(in:.whitespacesAndNewlines)
-        guard !text.isEmpty,requireLogin("reply") else{return}
+        guard !text.isEmpty, allowsSingleMusicLink(text), requireLogin("reply") else{return}
         guard let story = discussionStory, story.created/1000+86400 > Date().timeIntervalSince1970,
               story.answers.contains(where: { $0.id == answer.id }) else { return }
         guard text.count <= 1000 else { toast(l("最多输入 1000 字","Limit: 1,000 characters")); return }
@@ -1030,7 +1066,7 @@ extension ContentView {
                                             Spacer(minLength:0)
                                             if let rid=reply.id { Button {openReport("reply",rid)} label:{Text("⚑").font(.system(size:10)).foregroundColor(Color(hex:0xb0a29d)).frame(width:24,height:20)}.buttonStyle(.plain) }
                                         }
-                                        Text(reply.text).font(.system(size:13)).foregroundColor(Color(hex:0x6d5f66)).lineSpacing(4).fixedSize(horizontal:false,vertical:true)
+                                        answerText(reply.text)
                                     }
                                     Spacer(minLength:0)
                                 }.padding(14).frame(maxWidth:.infinity,alignment:.leading).background(replyCardSurface,in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).strokeBorder(replyCardBorder,lineWidth:1))
