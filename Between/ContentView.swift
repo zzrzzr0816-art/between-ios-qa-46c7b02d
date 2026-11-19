@@ -48,6 +48,9 @@ struct ContentView: View {
     @State var reportAuthorID: String?
     @State var reportAlsoBlock = false
     @State var reportUsesServer = false
+    @State var onlineBlockedUsers: [NativeFeedModel.RemoteBlock]?
+    @State var blockedListError = false
+    @State var unblockTarget: NativeBlockedRecord?
 
     func unreadReplyIDs(in answer: NativeAnswer) -> Set<String> {
         guard answer.mine == true || localState.answerOwnership?.contains(answer.id) == true else { return [] }
@@ -317,6 +320,7 @@ struct ContentView: View {
             axis = nil; settling = false; verticalTarget = nil; verticalProgress = 0; edgeOffset = 0
         }
         selectedReport = nil
+        onlineBlockedUsers = nil; blockedListError = false; unblockTarget = nil
         if !resumingAction { composerMusic = nil; replyMusic = nil }
         snapshots=[];reports=[];hidden=[];liked=[:];best=[:];updates=[:];reviewed=[]
         restoreLocal()

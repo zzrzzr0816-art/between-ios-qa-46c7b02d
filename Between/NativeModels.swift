@@ -393,6 +393,22 @@ enum NativeCamp: String {
         return marker
     }
 
+    struct RemoteBlock: Decodable, Identifiable {
+        let id: String
+        let blockedAt: Double
+    }
+
+    func fetchBlockedUsers(viewer: String) async throws -> [RemoteBlock] {
+        struct BlockList: Decodable { let users: [RemoteBlock] }
+        guard let base = URL(string:apiBase), base.host != nil else { throw URLError(.badURL) }
+        var request = URLRequest(url:base.appendingPathComponent("blocked-users"),cachePolicy:.reloadIgnoringLocalCacheData,timeoutInterval:15)
+        request.httpShouldHandleCookies = false
+        request.setValue(deviceMarker(viewer),forHTTPHeaderField:"X-Between-Device")
+        let (data,response) = try await session.data(for:request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        return try JSONDecoder().decode(BlockList.self,from:data).users
+    }
+
     struct MutationResult: Decodable {
         let ok: Bool
         let id: String?

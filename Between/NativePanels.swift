@@ -499,9 +499,9 @@ extension ContentView {
                     }
                     if block {
                         do {
-                            _ = try await model.mutate("block-user",fields:["id":id,"targetType":type],viewer:viewer)
+                            let result = try await model.mutate("block-user",fields:["id":id,"targetType":type],viewer:viewer)
                             guard serverViewer == viewer else { return }
-                            recordBlock(NativeBlockedRecord(id:"\(type):\(id)",nickname:details.targetNickname,blockedAt:Date(),server:true))
+                            recordBlock(NativeBlockedRecord(id:result.id ?? "\(type):\(id)",nickname:details.targetNickname,blockedAt:Date(),server:true))
                             persistLocal()
                         } catch {
                             guard serverViewer == viewer else { return }
@@ -878,8 +878,13 @@ extension ContentView {
             }
     }
     private func blockedPage(width: CGFloat,height: CGFloat,top: CGFloat,bottom: CGFloat) -> some View {
-        let records = localState.blockedRecords ?? []
-        let legacy = (localState.blockedAuthorIDs ?? []).subtracting(records.filter { !$0.server }.map(\.id))
+        let local = localState.blockedRecords ?? []
+        let legacy = (localState.blockedAuthorIDs ?? []).subtracting(local.filter { !$0.server }.map(\.id))
+        let remote = (onlineBlockedUsers ?? []).map { entry in
+            NativeBlockedRecord(id:entry.id,nickname:local.first { $0.server && $0.id == entry.id }?.nickname,
+                                blockedAt:Date(timeIntervalSince1970:entry.blockedAt),server:true)
+        }
+        let records = (remote + local.filter { !$0.server }).sorted { $0.blockedAt > $1.blockedAt }
         return VStack(alignment:.leading,spacing:12) {
             HStack(spacing:10) {
                 Button { openUtility("profile") } label: {
@@ -889,33 +894,84 @@ extension ContentView {
                 Spacer()
             }
             ScrollView {
-                VStack(alignment:.leading,spacing:10) {
-                    if records.isEmpty && legacy.isEmpty {
-                        Text(l("还没有从这台设备拉黑的人","No users blocked from this device"))
+                LazyVStack(alignment:.leading,spacing:10) {
+                    if blockedListError {
+                        Button(l("加载失败，重试","Couldn’t load. Retry")) { Task { await loadBlockedUsers() } }
+                            .font(.system(size:14)).foregroundColor(H5Design.muted)
+                            .frame(maxWidth:.infinity,minHeight:44)
+                    } else if usesLiveFeed && auth.isReady && onlineBlockedUsers == nil {
+                        ProgressView().frame(maxWidth:.infinity,minHeight:44)
+                    } else if records.isEmpty && legacy.isEmpty {
+                        Text(l("黑名单为空","No blocked users"))
                             .font(.system(size:14)).foregroundColor(H5Design.muted)
                             .frame(maxWidth:.infinity).padding(.vertical,24)
                     }
-                    ForEach(records.sorted { $0.blockedAt > $1.blockedAt }) { record in
-                        blockedRow(record.nickname ?? l("匿名用户","Anonymous user"),
-                                   subtitle:record.blockedAt.formatted(date:.abbreviated,time:.shortened))
+                    ForEach(records) { record in
+                        blockedRow(record, subtitle:record.blockedAt.formatted(date:.abbreviated,time:.shortened))
                     }
-                    ForEach(legacy.sorted(),id:\.self) { _ in
-                        blockedRow(l("匿名用户","Anonymous user"),subtitle:l("本机拉黑","Blocked on this device"))
+                    ForEach(legacy.sorted(),id:\.self) { id in
+                        blockedRow(NativeBlockedRecord(id:id,nickname:nil,blockedAt:.distantPast,server:false),
+                                   subtitle:l("本机拉黑","Blocked on this device"))
                     }
                 }.padding(.bottom,12)
             }
         }.padding(.horizontal,20).padding(.top,top+8).padding(.bottom,bottom+H5Design.navigationHeight+12)
             .frame(width:width,height:height,alignment:.top)
             .background(Color(hex:0xfffaf8))
-
+            .task(id:serverViewer) { await loadBlockedUsers() }
+            .confirmationDialog(l("解除拉黑？","Unblock this user?"),isPresented:Binding(
+                get:{ unblockTarget != nil },set:{ if !$0 { unblockTarget = nil } }),
+                                titleVisibility:.visible,presenting:unblockTarget) { record in
+                Button(l("解除拉黑","Unblock"),role:.destructive) { unblock(record) }
+                Button(l("取消","Cancel"),role:.cancel) {}
+            } message: { record in
+                Text(record.nickname ?? l("匿名用户","Anonymous user"))
+            }
     }
 
-    private func blockedRow(_ name: String,subtitle: String) -> some View {
-        VStack(alignment:.leading,spacing:5) {
-            Text(name).font(.system(size:14,weight:.semibold))
-            Text(subtitle).font(.system(size:12)).foregroundColor(H5Design.muted)
-        }.padding(14).frame(maxWidth:.infinity,alignment:.leading)
+    private func loadBlockedUsers() async {
+        blockedListError = false
+        guard usesLiveFeed, auth.isReady else { return }
+        let viewer = serverViewer
+        do {
+            let records = try await model.fetchBlockedUsers(viewer:viewer)
+            if serverViewer == viewer && !Task.isCancelled { onlineBlockedUsers = records }
+        } catch {
+            if serverViewer == viewer && !Task.isCancelled { blockedListError = true }
+        }
+    }
+
+    private func blockedRow(_ record: NativeBlockedRecord,subtitle: String) -> some View {
+        HStack(spacing:12) {
+            VStack(alignment:.leading,spacing:5) {
+                Text(record.nickname ?? l("匿名用户","Anonymous user")).font(.system(size:14,weight:.semibold))
+                Text(subtitle).font(.system(size:12)).foregroundColor(H5Design.muted)
+            }
+            Spacer(minLength:4)
+            Button(l("解除","Unblock")) { unblockTarget = record }
+                .font(.system(size:13,weight:.semibold)).foregroundColor(Color(hex:0xb05e61))
+                .frame(minHeight:44).disabled(serverWriteInFlight)
+        }.padding(.horizontal,14).padding(.vertical,6)
+            .frame(maxWidth:.infinity,alignment:.leading)
             .background(.white,in:RoundedRectangle(cornerRadius:15))
+    }
+
+    private func unblock(_ record: NativeBlockedRecord) {
+        func clear() {
+            localState.blockedRecords?.removeAll { $0.id == record.id && $0.server == record.server }
+            if record.server { onlineBlockedUsers?.removeAll { $0.id == record.id } }
+            else {
+                localState.blockedAuthorIDs?.remove(record.id)
+                rebuildVisibleStories()
+            }
+            persistLocal()
+            toast(l("已解除拉黑","User unblocked"))
+        }
+        if record.server {
+            writeToServer("unblock-user",fields:["id":record.id]) { _ in clear() }
+        } else {
+            clear()
+        }
     }
 
     func libraryPage(_ page:String,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
