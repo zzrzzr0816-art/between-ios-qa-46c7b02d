@@ -508,7 +508,15 @@ struct SharedMusicLink {
         case "163cn.tv": return path.count > 1 ? "网易云音乐" : nil
         case "y.qq.com", "i.y.qq.com", "c.y.qq.com":
             return path.contains("/song") || path.contains("songdetail") || path.contains("playsong") ? "QQ 音乐" : nil
-        case "url.cn": return nil
+        case "music.douyin.com":
+            let track = URLComponents(url:url,resolvingAgainstBaseURL:false)?.queryItems?
+                .first { $0.name == "track_id" }?.value
+            return path == "/qishui/share/track" && track?.isEmpty == false ? "汽水音乐" : nil
+        case "qishui.douyin.com":
+            return path.hasPrefix("/s/") && path.count > 3 ? "汽水音乐" : nil
+        case "kuwo.cn", "www.kuwo.cn", "m.kuwo.cn", "h5.kuwo.cn":
+            return path.hasPrefix("/play_detail/") || path.hasPrefix("/yinyue/")
+                || path.hasPrefix("/song/") || path.contains("/single/") ? "酷我音乐" : nil
         case "www.kugou.com", "m.kugou.com", "www3.kugou.com", "t1.kugou.com", "t2.kugou.com":
             return path.contains("/song") || path.contains("/share") || path.count > 1 && host.hasPrefix("t") ? "酷狗音乐" : nil
         case "music.youtube.com":
