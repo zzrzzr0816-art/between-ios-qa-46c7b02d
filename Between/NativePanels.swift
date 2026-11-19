@@ -31,10 +31,8 @@ extension ContentView {
                     .transition(.asymmetric(insertion:.move(edge: chosen == .angel ? .trailing:.leading).combined(with:.opacity),removal:.opacity))
             }
             HStack(spacing:9){
-                ZStack(alignment:.topLeading){
-                    GrowField(text:$composer,height:$composerHeight,focused:$composerFocused,
-                              prompt:l("说点什么…","Say something kind…"))
-                }.frame(height:composerHeight).background(Color(hex:0xf7f4f1),in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xeee8e4),lineWidth:1))
+                MusicComposer(text:$composer,height:$composerHeight,focused:$composerFocused,
+                              draft:$composerMusic,camp:chosen,chinese:zh,prompt:l("说点什么…","Say something kind…"))
                 Button {sendPreview(chosen)} label:{HStack(spacing:4){Text(l("发送","Send"));Text("↑")}.font(.system(size:15,weight:.bold)).foregroundColor(.white).padding(.horizontal,16).frame(minHeight:44).background(chosen.accent,in:RoundedRectangle(cornerRadius:16))}.buttonStyle(PressScale())
             }.padding(.horizontal,16).padding(.top,8).padding(.bottom,keyboardHeight > 0 ? 8 : bottom+10)
                 .background(Color(hex:0xfffdfb)).overlay(Rectangle().fill(Color(hex:0xeee5e2)).frame(height:1),alignment:.top)
@@ -67,7 +65,7 @@ extension ContentView {
         Button {
             guard value != chosen else { return }
             composerFocused = false
-            composer = ""
+            composer = ""; composerMusic = nil
             withAnimation(transitionAnimation){camp=value}
         } label:{
             HStack(spacing:7){
@@ -95,7 +93,7 @@ extension ContentView {
                 if isBest { Text("✦ " + l("最佳","Best")).font(.system(size:11)).foregroundColor(Color(hex:0xa87336)) }
                 Button {openReport("answer",answer.id)} label:{Text("⚑ "+l("举报","Report")).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d)).padding(.leading,8).frame(height:26)}.buttonStyle(.plain)
             }
-            answerText(answer.text)
+            answerText(answer.text,side:NativeCamp(rawValue:answer.side))
             HStack(spacing:8){
                 Button {
                     guard requireLogin("like") else{return}
@@ -144,41 +142,39 @@ extension ContentView {
             .onTapGesture {openReply(answer)}
             .accessibilityHidden(selectedReply?.id == answer.id)
     }
-    private func answerText(_ text: String) -> some View {
-        let link = SharedMusicLink.links(in:text).first
-        let message = link.map { text.replacingCharacters(in:$0.range,with:"") } ?? text
-        let trimmed = message.trimmingCharacters(in:.whitespacesAndNewlines)
+    private func answerText(_ text: String,side: NativeCamp?) -> some View {
+        let share = MusicDraft.display(text)
         return VStack(alignment:.leading,spacing:8) {
-            if !trimmed.isEmpty {
-                Text(trimmed)
+            if !share.body.isEmpty {
+                Text(share.body)
                     .font(.system(size:14))
                     .lineSpacing(max(0,14*1.6-UIFont.systemFont(ofSize:14).lineHeight))
                     .fixedSize(horizontal:false,vertical:true)
             }
-            if let link { musicCard(link) }
+            if let link = share.link {
+                Link(destination:link.url) {
+                    MusicCardLabel(title:share.title ?? link.platform,
+                                   subtitle:share.title == nil ? nil : [share.artist,link.platform].compactMap { $0 }.joined(separator:" · "),
+                                   accent:side?.accent ?? H5Design.muted,showArrow:true)
+                }.buttonStyle(PressScale())
+                    .accessibilityHint(l("打开歌曲","Open track"))
+            }
         }.frame(maxWidth:.infinity,alignment:.leading).padding(.vertical,12)
     }
 
-    private func musicCard(_ link: SharedMusicLink) -> some View {
-        Link(destination:link.url) {
-            HStack(spacing:10) {
-                Image(systemName:"music.note")
-                    .font(.system(size:16,weight:.semibold))
-                    .foregroundColor(Color(hex:0xa36660))
-                    .frame(width:34,height:34)
-                    .background(Color(hex:0xf4e3df),in:RoundedRectangle(cornerRadius:10))
-                    .accessibilityHidden(true)
-                VStack(alignment:.leading,spacing:3) {
-                    Text(link.platform).font(.system(size:13,weight:.semibold))
-                    Text(l("打开歌曲","Open track")).font(.system(size:11)).foregroundColor(H5Design.muted)
-                }
-                Spacer(minLength:8)
-                Image(systemName:"arrow.up.right").font(.system(size:12,weight:.semibold))
-                    .foregroundColor(H5Design.muted).accessibilityHidden(true)
-            }.padding(10).foregroundColor(H5Design.ink)
-                .background(Color(hex:0xfcf4ef),in:RoundedRectangle(cornerRadius:14))
-                .overlay(RoundedRectangle(cornerRadius:14).strokeBorder(Color(hex:0xebdcd3),lineWidth:1))
-        }.buttonStyle(PressScale())
+    private func musicPayload(_ body: String,draft: MusicDraft?) -> String? {
+        let text = body.trimmingCharacters(in:.whitespacesAndNewlines)
+        if let draft, draft.showTitle && MusicDraft.clean(draft.title).isEmpty {
+            toast(l("请填写歌曲名，或取消展示","Enter a track title or turn off title display"))
+            return nil
+        }
+        let payload = draft?.appending(to:text) ?? text
+        guard !payload.isEmpty, allowsSingleMusicLink(payload) else { return nil }
+        guard payload.unicodeScalars.count <= 1000 else {
+            toast(l("正文和音乐信息最多 1000 字","Text and music details must fit within 1,000 characters"))
+            return nil
+        }
+        return payload
     }
 
     private func allowsSingleMusicLink(_ text: String) -> Bool {
@@ -195,16 +191,14 @@ extension ContentView {
         settleCamp(to: 0)
     }
     func sendPreview(_ chosen:NativeCamp){
-        let text=composer.trimmingCharacters(in:.whitespacesAndNewlines);guard !text.isEmpty else{return}
-        guard allowsSingleMusicLink(text), requireLogin("respond") else{return}
-        guard text.count<=1000 else{toast(l("最多输入 1000 字","Limit: 1,000 characters"));return}
+        guard let text = musicPayload(composer,draft:composerMusic), requireLogin("respond") else { return }
         guard camp == chosen, let story = discussionStory,
               story.created/1000+86400 > Date().timeIntervalSince1970 else { return }
         if usesLiveFeed && !story.id.hasPrefix("local-") {
-            let draft = composer
+            let draft = composer, attachment = composerMusic
             writeToServer("answers",fields:["storyId":story.id,"side":chosen.rawValue,"text":text]) { _ in
-                if discussionID == story.id, camp == chosen, composer == draft {
-                    composer = ""; composerFocused = false
+                if discussionID == story.id, camp == chosen, composer == draft, composerMusic?.id == attachment?.id {
+                    composer = ""; composerMusic = nil; composerFocused = false
                 }
                 toast(l("建议已发布","Response posted"))
             }
@@ -214,7 +208,7 @@ extension ContentView {
         localState.myAnswers[story.id,default:[]].append(answer)
         localState.answerOwnership = (localState.answerOwnership ?? []).union([answer.id])
         rememberExpiry(of: story)
-        composer = ""; composerFocused = false
+        composer = ""; composerMusic = nil; composerFocused = false
         rebuildVisibleStories()
         persistLocal()
         toast(l("建议已保存在本机","Response saved on this device"))
@@ -486,16 +480,14 @@ extension ContentView {
         toast(l("进展已保存","Update saved"))
     }
     func appendReply(_ answer:NativeAnswer){
-        let text=replyText.trimmingCharacters(in:.whitespacesAndNewlines)
-        guard !text.isEmpty, allowsSingleMusicLink(text), requireLogin("reply") else{return}
+        guard let text = musicPayload(replyText,draft:replyMusic), requireLogin("reply") else { return }
         guard let story = discussionStory, story.created/1000+86400 > Date().timeIntervalSince1970,
               story.answers.contains(where: { $0.id == answer.id }) else { return }
-        guard text.count <= 1000 else { toast(l("最多输入 1000 字","Limit: 1,000 characters")); return }
         if usesLiveFeed && model.sourceStories.contains(where: { $0.id == story.id && $0.answers.contains { $0.id == answer.id } }) {
-            let draft = replyText
+            let draft = replyText, attachment = replyMusic
             writeToServer("replies",fields:["answerId":answer.id,"text":text]) { _ in
-                if discussionID == story.id, selectedReply?.id == answer.id, replyText == draft {
-                    replyText = ""; replyFocused = false
+                if discussionID == story.id, selectedReply?.id == answer.id, replyText == draft, replyMusic?.id == attachment?.id {
+                    replyText = ""; replyMusic = nil; replyFocused = false
                 }
                 toast(l("回复已发布","Reply posted"))
             }
@@ -508,7 +500,7 @@ extension ContentView {
         parents[answer.id] = story.id
         localState.replyStory = parents
         rememberExpiry(of: story)
-        replyText = ""; replyFocused = false
+        replyText = ""; replyMusic = nil; replyFocused = false
         rebuildVisibleStories()
         selectedReply = discussionStory?.answers.first { $0.id == answer.id }
         persistLocal()
@@ -1001,6 +993,7 @@ extension ContentView {
     func openReply(_ answer: NativeAnswer) {
         composerFocused = false
         replyText = ""
+        replyMusic = nil
         replyOrigin = cardFrames[answer.id]
         let unread = unreadReplyIDs(in:answer)
         if !unread.isEmpty {
@@ -1046,7 +1039,7 @@ extension ContentView {
                                 Spacer()
                                 Button {openReport("answer",answer.id)} label:{Text("⚑ "+l("举报","Report")).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d)).frame(height:26)}.buttonStyle(.plain)
                             }
-                            answerText(answer.text)
+                            answerText(answer.text,side:NativeCamp(rawValue:answer.side))
                                 .frame(maxWidth:.infinity,alignment:.leading)
                             HStack(spacing:5){
                                 Image(systemName:"heart").font(.system(size:14,weight:.light))
@@ -1066,7 +1059,7 @@ extension ContentView {
                                             Spacer(minLength:0)
                                             if let rid=reply.id { Button {openReport("reply",rid)} label:{Text("⚑").font(.system(size:10)).foregroundColor(Color(hex:0xb0a29d)).frame(width:24,height:20)}.buttonStyle(.plain) }
                                         }
-                                        answerText(reply.text)
+                                        answerText(reply.text,side:NativeCamp(rawValue:answer.side))
                                     }
                                     Spacer(minLength:0)
                                 }.padding(14).frame(maxWidth:.infinity,alignment:.leading).background(replyCardSurface,in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).strokeBorder(replyCardBorder,lineWidth:1))
@@ -1077,11 +1070,9 @@ extension ContentView {
                     }.padding(.horizontal,18).padding(.bottom,20)
                 }
                 HStack(spacing:9){
-                    GrowField(text:$replyText,height:$replyHeight,focused:$replyFocused,maxHeight:104,
-                              prompt:l("写下回复…","Write a reply…"),returnKey:.send,submit:{appendReply(answer)})
-                        .frame(height:replyHeight)
-                        .background(Color(hex:0xf7f4f1),in:RoundedRectangle(cornerRadius:16))
-                        .overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xeee8e4),lineWidth:1))
+                    MusicComposer(text:$replyText,height:$replyHeight,focused:$replyFocused,
+                                  draft:$replyMusic,camp:side,chinese:zh,prompt:l("写下回复…","Write a reply…"),
+                                  maxHeight:104,submit:{appendReply(answer)})
                     Button {appendReply(answer)} label:{
                         Image(systemName:"arrow.up").font(.system(size:16,weight:.semibold))
                             .foregroundColor(.white).frame(width:44,height:44)
@@ -1212,6 +1203,132 @@ private struct DetailAddition: ViewModifier {
     }
 }
 
+private struct MusicCardLabel: View {
+    let title: String
+    let subtitle: String?
+    let accent: Color
+    let showArrow: Bool
+
+    var body: some View {
+        HStack(spacing:9) {
+            Image(systemName:"music.note").font(.system(size:14,weight:.semibold))
+                .foregroundColor(accent).frame(width:29,height:29)
+                .background(accent.opacity(0.14),in:RoundedRectangle(cornerRadius:8))
+                .accessibilityHidden(true)
+            VStack(alignment:.leading,spacing:3) {
+                Text(title).font(.system(size:13,weight:.semibold)).lineLimit(2)
+                if let subtitle {
+                    Text(subtitle).font(.system(size:11)).foregroundColor(H5Design.muted).lineLimit(2)
+                }
+            }
+            Spacer(minLength:5)
+            if showArrow {
+                Image(systemName:"arrow.up.right").font(.system(size:11,weight:.semibold))
+                    .foregroundColor(accent).accessibilityHidden(true)
+            }
+        }.padding(8).foregroundColor(H5Design.ink)
+            .background(accent.opacity(0.08),in:RoundedRectangle(cornerRadius:12))
+            .overlay(RoundedRectangle(cornerRadius:12).strokeBorder(accent.opacity(0.2),lineWidth:1))
+    }
+}
+
+private struct MusicComposer: View {
+    @Binding var text: String
+    @Binding var height: CGFloat
+    @Binding var focused: Bool
+    @Binding var draft: MusicDraft?
+    let camp: NativeCamp?
+    let chinese: Bool
+    let prompt: String
+    var maxHeight: CGFloat = 112
+    var submit: (() -> Void)?
+    @State private var editing = false
+    @State private var replacing = false
+    @State private var tooMany = false
+    @State private var replacement: MusicDraft?
+
+    private var accent: Color { camp?.accent ?? H5Design.muted }
+    private func l(_ zh: String,_ en: String) -> String { chinese ? zh : en }
+
+    var body: some View {
+        VStack(spacing:0) {
+            if let current = draft {
+                HStack(spacing:0) {
+                    Button {
+                        editing = true
+                    } label: {
+                        MusicCardLabel(title:current.showTitle && !current.title.isEmpty ? current.title : current.platform,
+                                       subtitle:current.showTitle && !current.artist.isEmpty ? current.artist : nil,
+                                       accent:accent,showArrow:false)
+                    }.buttonStyle(.plain)
+                    Button {
+                        draft = nil
+                    } label: {
+                        Image(systemName:"xmark").font(.system(size:12,weight:.semibold))
+                            .foregroundColor(H5Design.muted).frame(width:36,height:44).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityLabel(l("移除歌曲","Remove track"))
+                }.padding(.leading,6).padding(.top,6)
+            }
+            GrowField(text:$text,height:$height,focused:$focused,maxHeight:maxHeight,prompt:prompt,
+                      returnKey:submit == nil ? .default : .send,submit:submit,pasteTransform:handlePaste)
+                .frame(height:height)
+        }.background(Color(hex:0xf7f4f1),in:RoundedRectangle(cornerRadius:16))
+            .overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xeee8e4),lineWidth:1).allowsHitTesting(false))
+            .sheet(isPresented:$editing) {
+                NavigationView {
+                    Form {
+                        Toggle(l("显示歌名和歌手","Show title and artist"),isOn:option(\.showTitle,default:false))
+                        if draft?.showTitle == true {
+                            TextField(l("歌曲名","Track title"),text:option(\.title,default:""))
+                            TextField(l("歌手（选填）","Artist (optional)"),text:option(\.artist,default:""))
+                        }
+                    }.navigationTitle(l("音乐附件","Music attachment")).navigationBarTitleDisplayMode(.inline)
+                        .toolbar { ToolbarItem(placement:.confirmationAction) { Button(l("完成","Done")) { editing = false } } }
+                }.navigationViewStyle(.stack)
+            }
+            .confirmationDialog(l("替换当前歌曲？","Replace the attached track?"),isPresented:$replacing,titleVisibility:.visible) {
+                Button(l("替换","Replace")) {
+                    if let replacement { attach(replacement) }
+                    replacement = nil
+                }
+                Button(l("取消","Cancel"),role:.cancel) { replacement = nil }
+            }
+            .alert(l("每条评论或回复只能分享一首歌","Share one track per comment or reply"),isPresented:$tooMany) {
+                Button(l("好","OK"),role:.cancel) {}
+            }
+            .task(id:draft?.id) {
+                guard let source = draft, source.title.isEmpty,
+                      let result = await source.lookup(), !Task.isCancelled,
+                      let title = result.title, !MusicDraft.clean(title).isEmpty,
+                      var current = draft, current == source else { return }
+                current.title = MusicDraft.clean(title)
+                current.artist = MusicDraft.clean(result.artist ?? "")
+                current.showTitle = true
+                draft = current
+            }
+    }
+
+    private func option<Value>(_ key: WritableKeyPath<MusicDraft,Value>,default value: Value) -> Binding<Value> {
+        Binding(get:{ draft?[keyPath:key] ?? value },set:{ draft?[keyPath:key] = $0 })
+    }
+
+    private func attach(_ value: MusicDraft) { draft = value }
+
+    private func handlePaste(_ clipboard: String) -> String? {
+        let links = SharedMusicLink.links(in:clipboard)
+        guard let first = links.first else { return nil }
+        guard links.count == 1 else { tooMany = true; return "" }
+        let (incoming,body) = MusicDraft.pasted(clipboard,link:first)
+        if let draft, draft.url != incoming.url {
+            replacement = incoming
+            replacing = true
+        } else if draft == nil {
+            attach(incoming)
+        }
+        return body
+    }
+}
+
 struct GrowField:UIViewRepresentable {
     @Binding var text:String
     @Binding var height:CGFloat
@@ -1221,6 +1338,7 @@ struct GrowField:UIViewRepresentable {
     var prompt: String?
     var returnKey: UIReturnKeyType = .default
     var submit: (() -> Void)?
+    var pasteTransform: ((String) -> String?)?
     func makeUIView(context:Context)->PromptTextView {
         let v=PromptTextView(frame:.zero,textContainer:nil)
         v.backgroundColor = .clear
@@ -1228,6 +1346,7 @@ struct GrowField:UIViewRepresentable {
         v.textColor = UIColor(red:0.19,green:0.16,blue:0.19,alpha:1)
         v.tintColor = UIColor(red:0.57,green:0.30,blue:0.31,alpha:1)
         v.prompt = prompt
+        v.pasteTransform = pasteTransform
         v.returnKeyType = returnKey
         v.textContainerInset = UIEdgeInsets(top:13,left:8,bottom:13,right:8)
         v.textContainer.lineFragmentPadding = 4
@@ -1242,6 +1361,7 @@ struct GrowField:UIViewRepresentable {
         context.coordinator.parent = self
         v.accessibilityLabel = label ?? prompt
         v.prompt = prompt
+        v.pasteTransform = pasteTransform
         if v.markedTextRange == nil && v.text != text { v.text = text }
         if focused && !v.isFirstResponder { v.becomeFirstResponder() }
         if !focused && v.isFirstResponder { v.resignFirstResponder() }
@@ -1279,6 +1399,16 @@ struct GrowField:UIViewRepresentable {
 }
 final class PromptTextView: UITextView {
     private let promptLabel = UILabel()
+    var pasteTransform: ((String) -> String?)?
+
+    override func paste(_ sender: Any?) {
+        if markedTextRange == nil, let pasteTransform, let clipboard = UIPasteboard.general.string,
+           let replacement = pasteTransform(clipboard) {
+            if !replacement.isEmpty { insertText(replacement) }
+            return
+        }
+        super.paste(sender)
+    }
     var prompt: String? {
         didSet {
             guard oldValue != prompt else { return }

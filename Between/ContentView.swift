@@ -35,6 +35,7 @@ struct ContentView: View {
     @State private var toastTask: Task<Void, Never>?
     @State private var hintTask: Task<Void, Never>?
     @State var composer = ""
+    @State var composerMusic: MusicDraft?
     @State var discussionID: String?
     @State var localState = NativeLocalState()
     var discussionStory: NativeStory? {
@@ -65,6 +66,7 @@ struct ContentView: View {
     @State var snapshotOrigin: CGRect? = nil
     @Namespace var storyTitleMotion
     @State var replyText = ""
+    @State var replyMusic: MusicDraft?
     @State var writeText = ""
     @State var updateText = ""
     @State var writingFocused = false
@@ -314,6 +316,7 @@ struct ContentView: View {
             axis = nil; settling = false; verticalTarget = nil; verticalProgress = 0; edgeOffset = 0
         }
         selectedReport = nil
+        if !resumingAction { composerMusic = nil; replyMusic = nil }
         snapshots=[];reports=[];hidden=[];liked=[:];best=[:];updates=[:];reviewed=[]
         restoreLocal()
         let restoredIndex = previousStory.flatMap { id in model.stories.firstIndex { $0.id == id } }
@@ -435,13 +438,13 @@ struct ContentView: View {
         if model.index != index { model.index = index }
         if let id = discussionID, !visible.contains(where: { $0.id == id }) {
             camp = nil; campProgress = 0; discussionID = nil
-            composer = ""; replyText = ""; selectedReply = nil
+            composer = ""; replyText = ""; composerMusic = nil; replyMusic = nil; selectedReply = nil
             composerFocused = false; replyFocused = false
         }
         if let reply = selectedReply {
             let updated = discussionStory?.answers.first { $0.id == reply.id }
             if updated != reply { selectedReply = updated }
-            if selectedReply == nil { replyFocused = false; replyText = "" }
+            if selectedReply == nil { replyFocused = false; replyText = ""; replyMusic = nil }
         }
         if let detail = detailStory {
             let updated = visible.first { $0.id == detail.id }
@@ -610,7 +613,7 @@ struct ContentView: View {
         let duration = 0.34
         let animation = transitionAnimation
         settle(duration: duration, animation: animation, changes: { campProgress = progress }) {
-            if progress == 0 { camp = nil; discussionID = nil; composer = ""; replyText = "" }
+            if progress == 0 { camp = nil; discussionID = nil; composer = ""; replyText = ""; composerMusic = nil; replyMusic = nil }
             resetIdleHints()
         }
     }
@@ -836,7 +839,9 @@ struct ContentView: View {
         guard !settling, axis == nil else { return }
         resetInputFocus()
         replyText=""
+        replyMusic = nil
         composer = ""
+        composerMusic = nil
         discussionID = nil
         withAnimation(transitionAnimation){utility=nil;detailStory=nil;selectedReply=nil;camp=nil;campProgress=0}
         resetIdleHints()
@@ -928,7 +933,7 @@ struct ContentView: View {
         updates = localState.updates
         if let id = discussionID, expired.contains(id) {
             camp = nil; campProgress = 0; discussionID = nil
-            selectedReply = nil; composer = ""; replyText = ""
+            selectedReply = nil; composer = ""; replyText = ""; composerMusic = nil; replyMusic = nil
             composerFocused = false; replyFocused = false
         }
         if let previous, expired.contains(previous), utility == "more" || utility == "update" {

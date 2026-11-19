@@ -533,3 +533,88 @@ struct SharedMusicLink {
         }
     }
 }
+
+
+struct MusicDraft: Equatable {
+    let id = UUID()
+    let url: URL
+    let platform: String
+    var title = ""
+    var artist = ""
+    var showTitle = false
+
+    struct Metadata: Decodable {
+        let title: String?
+        let artist: String?
+    }
+
+    static func clean(_ text: String) -> String {
+        String(text.replacingOccurrences(of:"】",with:"")
+            .components(separatedBy:.newlines).joined(separator:" ")
+            .trimmingCharacters(in:.whitespacesAndNewlines).prefix(80))
+    }
+
+    func appending(to text: String) -> String {
+        let title = Self.clean(self.title)
+        let artist = Self.clean(self.artist)
+        return [text,url.absoluteString,
+            showTitle && !title.isEmpty ? "【歌曲名：\(title)】" : "",
+            showTitle && !title.isEmpty && !artist.isEmpty ? "【歌手：\(artist)】" : ""]
+            .filter { !$0.isEmpty }.joined(separator:"\n")
+    }
+
+    func lookup() async -> Metadata? {
+        guard let base = URL(string:BetweenAPI.base),
+              var link = URLComponents(url:base.appendingPathComponent("music-track"),resolvingAgainstBaseURL:false)
+        else { return nil }
+        link.queryItems = [URLQueryItem(name:"url",value:url.absoluteString)]
+        guard let endpoint = link.url else { return nil }
+        do {
+            let (data,response) = try await URLSession.shared.data(for:URLRequest(url:endpoint,timeoutInterval:8))
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            return try JSONDecoder().decode(Metadata.self,from:data)
+        } catch { return nil }
+    }
+
+    static func pasted(_ text: String, link: SharedMusicLink) -> (MusicDraft,String) {
+        var draft = MusicDraft(url:link.url,platform:link.platform)
+        let copy = text.replacingCharacters(in:link.range,with:"")
+        var lines = copy.components(separatedBy:.newlines)
+        if let index = lines.firstIndex(where: {
+            let line = $0.trimmingCharacters(in:.whitespaces)
+            return line.hasPrefix("歌曲名：") || line.hasPrefix("分享《") || line.hasPrefix("分享歌曲《")
+        }) {
+            let line = lines[index].trimmingCharacters(in:.whitespaces)
+            if line.hasPrefix("歌曲名：") {
+                draft.title = clean(String(line.dropFirst(4)))
+            } else if let opening = line.firstIndex(of:"《"), let closing = line.firstIndex(of:"》"), opening < closing {
+                draft.title = clean(String(line[line.index(after:opening)..<closing]))
+                let suffix = line[line.index(after:closing)...].trimmingCharacters(in:CharacterSet(charactersIn:" -—–·"))
+                draft.artist = clean(suffix)
+            }
+            if !draft.title.isEmpty {
+                lines.remove(at:index)
+                if let artist = lines.firstIndex(where:{ $0.trimmingCharacters(in:.whitespaces).hasPrefix("歌手：") }) {
+                    draft.artist = clean(String(lines.remove(at:artist).trimmingCharacters(in:.whitespaces).dropFirst(3)))
+                }
+                draft.showTitle = true
+            }
+        }
+        return (draft,lines.joined(separator:"\n").trimmingCharacters(in:.whitespacesAndNewlines))
+    }
+
+    static func display(_ text: String) -> (body: String, link: SharedMusicLink?, title: String?, artist: String?) {
+        var lines = text.components(separatedBy:"\n")
+        func take(_ prefix: String) -> String? {
+            guard let line = lines.last, line.hasPrefix(prefix), line.hasSuffix("】") else { return nil }
+            lines.removeLast()
+            return clean(String(line.dropFirst(prefix.count).dropLast()))
+        }
+        let artist = take("【歌手：")
+        let title = take("【歌曲名：")
+        let body = lines.joined(separator:"\n")
+        guard let link = SharedMusicLink.links(in:body).first else { return (text,nil,nil,nil) }
+        return (body.replacingCharacters(in:link.range,with:"").trimmingCharacters(in:.whitespacesAndNewlines),
+                link,title,artist)
+    }
+}
