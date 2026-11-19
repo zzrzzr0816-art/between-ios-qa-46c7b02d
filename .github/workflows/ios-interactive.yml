@@ -1,136 +1,37 @@
-name: Interactive iOS simulator
-on:
-  workflow_dispatch:
-    inputs:
-      session:
-        description: App session to verify
-        type: choice
-        default: fixture-account
-        options:
-          - fixture-account
-          - fixture-guest
-          - live-apple
-      companion_check:
-        description: Run companion gestures and keyboard checks before opening the viewer
-        type: boolean
-        default: true
-      open_viewer:
-        description: Keep the interactive simulator available after checks
-        type: boolean
-        default: false
+name: Report screenshot
+on: workflow_dispatch
 permissions:
   contents: read
 jobs:
-  interactive:
+  screenshot:
     runs-on: macos-15
-    timeout-minutes: 100
+    timeout-minutes: 19
     steps:
       - uses: actions/checkout@v4
-      - name: Select stable Xcode and simulator
+      - name: Build
         run: |
-          if [ -d /Applications/Xcode_16.4.app ]; then
-            sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
-          fi
-          xcodebuild -version
-          xcrun simctl list runtimes
-      - name: Build native app
-        run: |
-          xcodebuild -project Between.xcodeproj -target Between -configuration Debug -sdk iphonesimulator CONFIGURATION_BUILD_DIR="$RUNNER_TEMP/between-build" CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/build.log" || { cat "$RUNNER_TEMP/build.log"; exit 1; }
-      - name: Fetch remote simulator tools
-        run: |
-          git clone https://github.com/plu/sim-remote.git "$RUNNER_TEMP/sim-remote"
-          cd "$RUNNER_TEMP/sim-remote"
-          git checkout a6267f0c215b507ec2558ad4b0708393fa8e2190
-          python3 -c 'from pathlib import Path; p=Path("mise.toml"); p.write_text(p.read_text().replace(", exe = \"idb_companion\"", "")); Path("mise.lock").unlink(missing_ok=True)'
-      - uses: jdx/mise-action@v4
-        with:
-          working_directory: ${{ runner.temp }}/sim-remote
-          experimental: true
-      - name: Set up simulator dependencies
-        if: inputs.companion_check || inputs.open_viewer
-        timeout-minutes: 6
-        working-directory: ${{ runner.temp }}/sim-remote
-        run: |
-          mise run install
-          mise run build
-      - name: Boot iPhone simulator
-        if: inputs.companion_check || inputs.open_viewer
-        timeout-minutes: 10
-        working-directory: ${{ runner.temp }}/sim-remote
+          if [ -d /Applications/Xcode_16.4.app ]; then sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer; fi
+          xcodebuild -project Between.xcodeproj -target Between -configuration Debug -sdk iphonesimulator CONFIGURATION_BUILD_DIR="$RUNNER_TEMP/report-build" CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/build.log" 2>&1 || { cat "$RUNNER_TEMP/build.log"; exit 1; }
+      - name: Capture iPhone screenshot
         run: |
           set -euo pipefail
-          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool NO
-          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; choices=[r for r in json.load(sys.stdin)["runtimes"] if r.get("isAvailable") and r["name"].startswith("iOS")]; print(next((r["identifier"] for r in choices if r["version"].startswith("18.")),choices[-1]["identifier"]))')
-          TYPE=$(xcrun simctl list devicetypes -j | python3 -c 'import json,sys; items=json.load(sys.stdin)["devicetypes"]; print(next(d["identifier"] for d in items if d["name"]=="iPhone 16"))')
-          DEVICE=$(xcrun simctl create Between-QA "$TYPE" "$RUNTIME")
-          echo "BETWEEN_SIMULATOR_UDID=$DEVICE" >> "$GITHUB_ENV"
+          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x["isAvailable"] and x["name"].startswith("iOS")]; print(next((x["identifier"] for x in r if x["version"].startswith("18.")),r[-1]["identifier"]))')
+          DEVICE=$(xcrun simctl create Between-Report com.apple.CoreSimulator.SimDeviceType.iPhone-16 "$RUNTIME")
           xcrun simctl boot "$DEVICE"
           open -a "$(xcode-select -p)/Applications/Simulator.app" --args -CurrentDeviceUDID "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
-          xcrun simctl list devices booted
-          for attempt in $(seq 1 40); do
-            if xcrun simctl io "$DEVICE" screenshot "$RUNNER_TEMP/between-boot.png" >/dev/null 2>&1 \
-              && [ "$(stat -f%z "$RUNNER_TEMP/between-boot.png")" -gt 20000 ]; then
-              echo "Simulator produced a framebuffer"
-              exit 0
-            fi
-            sleep 3
+          xcrun simctl status_bar "$DEVICE" override --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState unplugged --batteryLevel 100 || true
+          xcrun simctl install "$DEVICE" "$RUNNER_TEMP/report-build/Between.app"
+          xcrun simctl launch "$DEVICE" com.example.between.preview -preview-fixture -ui-zh -ui-report-shot > "$RUNNER_TEMP/launch.log" 2>&1 &
+          LAUNCH=$!
+          mkdir -p "$RUNNER_TEMP/shots"
+          for n in 1 2 3 4; do
+            sleep 12
+            xcrun simctl io "$DEVICE" screenshot "$RUNNER_TEMP/shots/report-$n.png" || true
           done
-          echo "The simulator did not produce a framebuffer" >&2
-          exit 1
-      - name: Run native companion interaction checks
-        if: inputs.companion_check
-        timeout-minutes: 8
-        working-directory: ${{ runner.temp }}/sim-remote
-        env:
-          BETWEEN_APP: ${{ runner.temp }}/between-build/Between.app
-          BETWEEN_EVIDENCE: ${{ runner.temp }}/between-companion-check
-          BETWEEN_SCREENSHOT_CHECK: ${{ runner.temp }}/companion-screenshot-check
-        run: |
-          set -euo pipefail
-          cp "$GITHUB_WORKSPACE/tests/companion-simulator.ts" ./companion-simulator.ts
-          mkdir -p "$BETWEEN_EVIDENCE"
-          xcrun swiftc "$GITHUB_WORKSPACE/tests/companion-screenshot.swift" -o "$BETWEEN_SCREENSHOT_CHECK"
-          mise exec -- node --experimental-strip-types companion-simulator.ts
+          kill "$LAUNCH" 2>/dev/null || true
       - uses: actions/upload-artifact@v4
-        if: always() && inputs.companion_check
+        if: always()
         with:
-          name: companion-simulator-check
-          path: ${{ runner.temp }}/between-companion-check/
-      - name: Start native app and authenticated remote viewer
-        if: inputs.open_viewer
-        env:
-          BETWEEN_SESSION: ${{ inputs.session }}
-        run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP/sim-remote"
-          DEVICE="$BETWEEN_SIMULATOR_UDID"
-          xcrun simctl install "$DEVICE" "$RUNNER_TEMP/between-build/Between.app"
-          case "$BETWEEN_SESSION" in
-            fixture-account) ARGS=(-preview-fixture) ;;
-            fixture-guest) ARGS=(-preview-fixture -ui-guest) ;;
-            live-apple) ARGS=() ;;
-          esac
-          xcrun simctl launch --terminate-running-process "$DEVICE" com.example.between.preview "${ARGS[@]}"
-          TOKEN=$(openssl rand -hex 24)
-          echo "::add-mask::$TOKEN"
-          RUNNER_TRACKING_ID="" nohup mise exec -- node src/server/index.ts --host 127.0.0.1 --port 8080 --token "$TOKEN" > "$RUNNER_TEMP/remote.log" 2>&1 &
-          brew install cloudflared
-          RUNNER_TRACKING_ID="" nohup cloudflared tunnel --url http://127.0.0.1:8080 --no-autoupdate > "$RUNNER_TEMP/tunnel.log" 2>&1 &
-          for i in $(seq 1 90); do
-            URL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' "$RUNNER_TEMP/tunnel.log" | head -1 || true)
-            if [ -n "$URL" ]; then break; fi
-            sleep 2
-          done
-          test -n "$URL"
-          printf '%s/?token=%s\n' "$URL" "$TOKEN" > "$RUNNER_TEMP/interactive-url.txt"
-      - uses: actions/upload-artifact@v4
-        if: inputs.open_viewer
-        with:
-          name: interactive-url
-          path: ${{ runner.temp }}/interactive-url.txt
-          retention-days: 1
-      - name: Keep simulator available for ninety minutes
-        if: inputs.open_viewer
-        run: |
-          for i in $(seq 1 540); do sleep 10; done
+          name: report-screenshots
+          path: ${{ runner.temp }}/shots/
