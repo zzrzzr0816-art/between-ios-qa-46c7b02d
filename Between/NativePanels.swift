@@ -40,6 +40,7 @@ extension ContentView {
                 .accessibilityHidden(selectedReply != nil)
         }.frame(width:width,height:max(1,height-keyboardHeight),alignment:.top)
             .frame(width:width,height:height,alignment:.top)
+            .modifier(ConversationForeground(progress:campProgress, incoming:true))
             .background(chosen.background)
             .simultaneousGesture(DragGesture(minimumDistance:8,coordinateSpace:.global)
                 .updating($returningFromComments) { _, active, _ in active = true }
@@ -536,7 +537,8 @@ extension ContentView {
                     }.padding(.top,12)
                     if let error=auth.errorText { Text(error).font(.system(size:11)).foregroundColor(Color(hex:0xb85657)).padding(.top,8) }
                 }.padding(18).frame(maxWidth:.infinity,alignment:.leading)
-                    .background(.white,in:RoundedRectangle(cornerRadius:20)).overlay(RoundedRectangle(cornerRadius:20).stroke(Color(hex:0xf1e7e2),lineWidth:1))
+                    .background(Color(hex:0xf8e8e5),in:RoundedRectangle(cornerRadius:20))
+                    .overlay(RoundedRectangle(cornerRadius:20).stroke(Color(hex:0xebceca),lineWidth:1))
                     .transition(.opacity)
             } else {
                 VStack(alignment:.leading,spacing:0){
@@ -912,11 +914,26 @@ private extension EnvironmentValues {
     }
 }
 
+private struct ConversationForeground: AnimatableModifier {
+    var progress: CGFloat
+    let incoming: Bool
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let visibility = incoming ? (progress-0.48)/0.52 : 1-progress/0.48
+        return content.opacity(Double(max(0,min(1,visibility))))
+    }
+}
+
 private struct DetailAddition: ViewModifier {
     @Environment(\.detailRevealProgress) private var progress
 
     func body(content: Content) -> some View {
-        content.opacity(max(0,min(1,(progress-0.32)/0.68)))
+        content.opacity(max(0,min(1,(progress-0.58)/0.42)))
     }
 }
 
