@@ -17,6 +17,7 @@ struct ContentView: View {
     @State var axis: PageDrag?
     @State var verticalTarget: String?
     @State private var pendingFeedRefresh = false
+    private var editingDiscussion: Bool { composerFocused || replyFocused }
     @State var serverWriteInFlight = false
     var usesLiveFeed: Bool { !model.preview && !showingTestStories }
     var serverViewer: String { auth.userId ?? "guest" }
@@ -238,6 +239,9 @@ struct ContentView: View {
                 if usesLiveFeed { Task { await refreshServerFeed() } }
             }
             .onChange(of: axis) { _ in applyPendingFeedRefresh() }
+            .onChange(of: editingDiscussion) { editing in
+                if !editing { applyPendingFeedRefresh() }
+            }
             .onChange(of: feedDragging) { active in
                 guard !active else { return }
                 DispatchQueue.main.async {
@@ -385,9 +389,16 @@ struct ContentView: View {
         }
     }
     func applyPendingFeedRefresh() {
-        guard pendingFeedRefresh, axis == nil, !settling else { return }
+        guard pendingFeedRefresh, axis == nil, !settling, !editingDiscussion else { return }
         pendingFeedRefresh = false
-        rebuildVisibleStories()
+        let wasViewingDiscussion = discussionID != nil
+        let wasViewingReply = selectedReply != nil
+        var transaction = Transaction(animation:nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { rebuildVisibleStories() }
+        if (wasViewingDiscussion && discussionID == nil) || (wasViewingReply && selectedReply == nil) {
+            toast(l("这条内容已到期或被移除","This content expired or was removed"))
+        }
     }
     func restoreLocal() {
         let store = UserDefaults.standard
@@ -418,20 +429,23 @@ struct ContentView: View {
         let now = Date().timeIntervalSince1970
         let source = testStoriesCreated.map { NativeFeedModel.fixtures(language,created:$0) } ?? model.sourceStories
         let (visible, changed) = localState.visibleStories(merging:source,at:now)
-        model.stories = visible
-        model.index = previous.flatMap { id in visible.firstIndex { $0.id == id } }
+        let index = previous.flatMap { id in visible.firstIndex { $0.id == id } }
             ?? min(model.index,max(0,visible.count-1))
+        if model.stories != visible { model.stories = visible }
+        if model.index != index { model.index = index }
         if let id = discussionID, !visible.contains(where: { $0.id == id }) {
             camp = nil; campProgress = 0; discussionID = nil
             composer = ""; replyText = ""; selectedReply = nil
             composerFocused = false; replyFocused = false
         }
         if let reply = selectedReply {
-            selectedReply = discussionStory?.answers.first { $0.id == reply.id }
+            let updated = discussionStory?.answers.first { $0.id == reply.id }
+            if updated != reply { selectedReply = updated }
             if selectedReply == nil { replyFocused = false; replyText = "" }
         }
         if let detail = detailStory {
-            detailStory = visible.first { $0.id == detail.id }
+            let updated = visible.first { $0.id == detail.id }
+            if updated != detail { detailStory = updated }
         }
         if changed { persistLocal() }
     }
@@ -898,7 +912,7 @@ struct ContentView: View {
         .position(x:side == .devil ? 23 : width-23,y:y)
     }
     func pruneExpired() {
-        guard axis == nil, !settling else { return }
+        guard axis == nil, !settling, !editingDiscussion else { return }
         let now = Date().timeIntervalSince1970
         let expired = Set((model.stories + snapshots + [detailStory,snapshotStory].compactMap { $0 })
             .filter { $0.created/1000+86400 <= now }.map(\.id))

@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct NativeReply: Codable { let id: String?; let author: String; let text: String; var authorID: String? = nil; var publicAuthorID: String? = nil }
-struct NativeAnswer: Codable, Identifiable {
+struct NativeReply: Codable, Equatable { let id: String?; let author: String; let text: String; var authorID: String? = nil; var publicAuthorID: String? = nil }
+struct NativeAnswer: Codable, Identifiable, Equatable {
     let id: String
     let author: String
     let side: String
@@ -13,7 +13,7 @@ struct NativeAnswer: Codable, Identifiable {
     var mine: Bool? = nil
     var liked: Bool? = nil
 }
-struct NativeStory: Codable, Identifiable {
+struct NativeStory: Codable, Identifiable, Equatable {
     let id: String
     let text: String
     var detail: String? = nil
