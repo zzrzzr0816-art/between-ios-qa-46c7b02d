@@ -747,26 +747,23 @@ extension ContentView {
         let lowerEdge = height - (keyboardHeight > 0 ? keyboardHeight+8 : bottom+18)
         let upperEdge = top+18
         let available = max(1,lowerEdge-upperEdge)
-        let dialogH = min(available,height*0.76)
+        let dialogH = min(available,height*0.74)
         let dialogCenter = upperEdge+available/2
         let dialogWidth = max(1,width-32)
         let side = NativeCamp(rawValue:answer.side)
         let accent = side?.accent ?? H5Design.muted
-        let surface = side?.background ?? Color(hex:0xfffbf9)
+        let surface = Color(hex:0xf5efea)
         return ZStack(alignment:.topLeading){
             Color.clear.contentShape(Rectangle()).onTapGesture{closeReply()}
             VStack(alignment:.leading,spacing:0){
                 HStack(spacing:13){
                     Button {closeReply()} label:{Text("‹").font(.system(size:32,weight:.light)).foregroundColor(Color(hex:0x5d5055)).frame(width:42,height:42).background(Color(hex:0xf2eae6),in:Circle())}.accessibilityLabel(l("返回评论","Back to comments"))
-                    VStack(alignment:.leading,spacing:3){
-                        Text(l("回复","Replies")).font(.system(size:18,weight:.bold)).foregroundColor(accent)
-                        Text("\(answer.replies.count) \(l("条回复","replies"))").font(.system(size:11)).foregroundColor(Color(hex:0x988b88))
-                    }
+                    Text(l("回复","Replies")).font(.system(size:18,weight:.bold)).foregroundColor(H5Design.ink)
                     Spacer(minLength:0)
-                }.padding(.horizontal,16).padding(.top,12).padding(.bottom,8)
+                }.padding(.horizontal,20).padding(.top,16).padding(.bottom,14)
                 ScrollView {
-                    VStack(alignment:.leading,spacing:12){
-                        VStack(alignment:.leading,spacing:0){
+                    VStack(alignment:.leading,spacing:16){
+                        VStack(alignment:.leading,spacing:8){
                             HStack{
                                 Text(answer.author).font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0x9a8888))
                                 if answer.author.contains("AI") { Text("AI").font(.system(size:9,weight:.bold)).foregroundColor(Color(hex:0xa87336)).padding(.horizontal,5).padding(.vertical,2).background(Color(hex:0xf7ead6),in:Capsule()) }
@@ -774,13 +771,13 @@ extension ContentView {
                                 Button {openReport("answer",answer.id)} label:{Text("⚑ "+l("举报","Report")).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d)).frame(height:26)}.buttonStyle(.plain)
                             }
                             answerText(answer.text)
-                                .frame(width:max(1,width-72),alignment:.leading)
+                                .frame(maxWidth:.infinity,alignment:.leading)
                             HStack(spacing:5){
                                 Image(systemName:"heart").font(.system(size:14,weight:.light))
                                 Text("\(answer.likes)").font(.system(size:12))
                             }.foregroundColor(Color(hex:0x897a7a)).padding(.horizontal,11).frame(height:36).background(Color(hex:0xf8f4f2),in:Capsule())
-                        }.padding(8).frame(maxWidth:.infinity,alignment:.leading).background(.white,in:RoundedRectangle(cornerRadius:18)).overlay(RoundedRectangle(cornerRadius:18).stroke(Color(hex:0xf0e9e7),lineWidth:1)).shadow(color:Color(hex:0x654c53).opacity(0.09),radius:12,y:8)
-                        Text(l("全部回复","Replies")).font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0x9a8888)).padding(.top,6)
+                        }.padding(14).frame(maxWidth:.infinity,alignment:.leading).background(.white,in:RoundedRectangle(cornerRadius:18)).overlay(RoundedRectangle(cornerRadius:18).stroke(Color(hex:0xf0e9e7),lineWidth:1))
+                        
                         if answer.replies.isEmpty {
                             Text(l("还没有回复，来接住这句话吧。","No replies yet. Be the first to respond.")).font(.system(size:14)).foregroundColor(Color(hex:0xa09494)).frame(maxWidth:.infinity).padding(.vertical,12)
                         } else {
@@ -801,7 +798,7 @@ extension ContentView {
                                     .animation(reduceMotion || !motionOn ? nil:.easeOut(duration:0.3).delay(Double(min(idx,6))*0.04),value:answer.replies.count)
                             }
                         }
-                    }.padding(.horizontal,12).padding(.bottom,14)
+                    }.padding(.horizontal,18).padding(.bottom,20)
                 }
                 HStack(spacing:9){
                     GrowField(text:$replyText,height:$replyHeight,focused:$replyFocused,maxHeight:104,
@@ -814,7 +811,7 @@ extension ContentView {
                             .foregroundColor(.white).frame(width:44,height:44)
                             .background(accent,in:Circle())
                     }.buttonStyle(PressScale()).accessibilityLabel(l("发送回复","Send reply"))
-                }.padding(.horizontal,12).padding(.vertical,8)
+                }.padding(.horizontal,18).padding(.top,8).padding(.bottom,14)
             }
             .frame(width:dialogWidth,height:dialogH)
             .background {

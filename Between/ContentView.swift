@@ -409,7 +409,6 @@ struct ContentView: View {
                     }.font(.system(size:12)).padding(10).background(H5Design.card,in:Capsule())
                         .frame(maxHeight:.infinity,alignment:.bottom).padding(.bottom,12)
                 }
-                Text("\(model.index+1) / \(model.stories.count)").font(.system(size:11)).tracking(2).foregroundColor(Color(hex:0x8c787f)).rotationEffect(.degrees(90)).position(x:width-30,y:area/2)
             } else if model.loading {ProgressView().tint(H5Design.muted)}
             else {
                 VStack(spacing:14) {
