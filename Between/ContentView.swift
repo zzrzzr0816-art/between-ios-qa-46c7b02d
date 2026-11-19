@@ -47,6 +47,8 @@ struct ContentView: View {
     @State var utility: String? = nil
     @State var reportAuthorID: String?
     @State var reportAlsoBlock = false
+    @State var reportUsesServer = false
+    @State var confirmingUnblockAll = false
 
     func unreadReplyIDs(in answer: NativeAnswer) -> Set<String> {
         guard answer.mine == true || localState.answerOwnership?.contains(answer.id) == true else { return [] }
@@ -714,7 +716,7 @@ struct ContentView: View {
         if page == "more" { return .move(edge:.bottom) }
         if page == "write" { return .move(edge:.bottom) }
         if page == "profile" { return .offset(y:24).combined(with:.opacity) }
-        if ["profile-stories","profile-answers","saved","activity"].contains(page) {
+        if ["profile-stories","profile-answers","saved","activity","blocked"].contains(page) {
             return .move(edge:.trailing)
         }
         return .opacity
@@ -817,7 +819,7 @@ struct ContentView: View {
         if detailStory != nil { return .detail }
         if utility == "write" { return .write(writePeek) }
         if utility == "profile" { return .profile }
-        if let u = utility, ["profile-stories","profile-answers","saved","activity"].contains(u) { return .library }
+        if let u = utility, ["profile-stories","profile-answers","saved","activity","blocked"].contains(u) { return .library }
         return .home
     }
     func bottomNav(width:CGFloat,height:CGFloat,bottom:CGFloat,profileActive:Bool)->some View {

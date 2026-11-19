@@ -40,6 +40,13 @@ struct NativeReportDetails: Codable {
     var result: String?
 }
 
+struct NativeBlockedRecord: Codable, Identifiable {
+    let id: String
+    let nickname: String?
+    let blockedAt: Date
+    let server: Bool
+}
+
 struct NativeLocalState: Codable {
     var localStories: [NativeStory] = []
     var snapshots: [NativeStory] = []
@@ -58,6 +65,7 @@ struct NativeLocalState: Codable {
     var replyOwnership: Set<String>? = nil
     var seenIncomingReplies: Set<String>? = nil
     var blockedAuthorIDs: Set<String>? = nil
+    var blockedRecords: [NativeBlockedRecord]? = nil
 
     func isBlocked(_ authorID: String?) -> Bool {
         authorID.map { blockedAuthorIDs?.contains($0) == true } ?? false
@@ -387,7 +395,7 @@ enum NativeCamp: String {
 
     struct MutationResult: Decodable {
         let ok: Bool
-        let id: String
+        let id: String?
         let pending: Bool?
     }
 

@@ -91,7 +91,9 @@ extension ContentView {
                 if answer.author.contains("AI") { Text("AI").font(.system(size:9,weight:.bold)).foregroundColor(Color(hex:0xa87336)).padding(.horizontal,5).padding(.vertical,2).background(Color(hex:0xf7ead6),in:Capsule()) }
                 Spacer()
                 if isBest { Text("✦ " + l("最佳","Best")).font(.system(size:11)).foregroundColor(Color(hex:0xa87336)) }
-                Button {openReport("answer",answer.id)} label:{Text("⚑ "+l("举报","Report")).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d)).padding(.leading,8).frame(height:26)}.buttonStyle(.plain)
+                if !isOwnReportTarget("answer",answer.id,in:discussionStory) {
+                    Button {openReport("answer",answer.id)} label:{Text("⚑ "+l("举报","Report")).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d)).padding(.leading,8).frame(height:26)}.buttonStyle(.plain)
+                }
             }
             answerText(answer.text,side:NativeCamp(rawValue:answer.side))
             HStack(spacing:8){
@@ -228,6 +230,7 @@ extension ContentView {
     func utilityPage(_ page:String,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->AnyView {
         switch page {
         case "profile": return AnyView(profilePage(width:width,height:height,top:top,bottom:bottom))
+        case "blocked": return AnyView(blockedPage(width:width,height:height,top:top,bottom:bottom))
         case "write": return AnyView(writePage(width:width,height:height,top:top,bottom:bottom))
         case "more": return AnyView(morePage(width:width,height:height,top:top,bottom:bottom))
         case "report": return AnyView(reportPage(width:width,height:height,top:top,bottom:bottom))
@@ -323,7 +326,7 @@ extension ContentView {
                 if model.current?.id.hasPrefix("local-") == true {
                     moreRow("✎ "+l("补充进展","Add an update")){updateText="";openUtility("update")}
                 }
-                if let story = model.current {
+                if let story = model.current, !isOwnReportTarget("story",story.id,in:story) {
                     moreRow("⚑ "+l("举报内容","Report content")){openReport("story",story.id)}
                 }
                 if let story = model.current, !story.id.hasPrefix("local-") {
@@ -384,20 +387,33 @@ extension ContentView {
                         }.padding(15).frame(maxWidth:.infinity).background(.white,in:RoundedRectangle(cornerRadius:14)).overlay(RoundedRectangle(cornerRadius:14).stroke(Color(hex:0xf0e7e2),lineWidth:1))
                     }
                 }
-                if reportAuthorID != nil {
+                if reportUsesServer || reportAuthorID != nil {
                     Toggle(l("同时拉黑此人","Also block this person"),isOn:$reportAlsoBlock)
                         .font(.system(size:14)).tint(Color(hex:0xb76f73))
                 }
                 Button {confirmReport()} label:{
                     Text(l("确认举报","Confirm report")).font(.system(size:15,weight:.bold)).foregroundColor(.white).frame(maxWidth:.infinity,minHeight:46).background(Color(hex:0x443a43),in:RoundedRectangle(cornerRadius:14))
-                }.padding(.top,4)
-                Text(l("这条举报会保存在本机。遇到紧急危险，请联系当地急救服务。","This report is saved on this device. Contact local emergency services for immediate danger.")).font(.system(size:12)).foregroundColor(Color(hex:0x8a7979)).lineSpacing(4)
+                }.padding(.top,4).disabled(serverWriteInFlight)
+                Text(reportUsesServer ? l("举报将提交审核。","This report will be sent for review.")
+                                      : l("这条举报会保存在本机。","This report is saved on this device.")).font(.system(size:12)).foregroundColor(Color(hex:0x8a7979)).lineSpacing(4)
             }.padding(.horizontal,20).padding(.bottom,bottom+20)
             Spacer(minLength:0)
         }.frame(width:width,height:height,alignment:.top).background(Color(hex:0xfffbf9))
     }
+    private func isOwnReportTarget(_ type: String,_ id: String,in story: NativeStory?) -> Bool {
+        switch type {
+        case "story": return id.hasPrefix("local-") || story?.mine == true
+        case "answer": return localState.answerOwnership?.contains(id) == true
+            || story?.answers.first(where:{ $0.id == id })?.mine == true
+        case "reply": return localState.replyOwnership?.contains(id) == true
+            || story?.answers.lazy.flatMap(\.replies).first(where:{ $0.id == id })?.mine == true
+        default: return true
+        }
+    }
+
     func openReport(_ type:String,_ id:String){
-        guard let story = type == "story" ? model.current : discussionStory, !id.isEmpty else { return }
+        guard let story = type == "story" ? model.current : discussionStory, !id.isEmpty,
+              !isOwnReportTarget(type,id,in:story) else { return }
         composerFocused = false
         replyFocused = false
         reportStoryId = story.id
@@ -406,13 +422,20 @@ extension ContentView {
         reportType=type;reportId=id
         reportAlsoBlock = false
         switch type {
-        case "story": reportAuthorID = story.id.hasPrefix("local-") || story.mine == true ? nil : story.authorID
-        case "answer": reportAuthorID = ownedAnswerIDs.contains(id) ? nil : story.answers.first { $0.id == id }?.authorID
-        case "reply":
-            reportAuthorID = localState.replyOwnership?.contains(id) == true ? nil
-                : story.answers.lazy.flatMap(\.replies).first { $0.id == id }?.authorID
+        case "story": reportAuthorID = story.authorID
+        case "answer": reportAuthorID = story.answers.first { $0.id == id }?.authorID
+        case "reply": reportAuthorID = story.answers.lazy.flatMap(\.replies).first { $0.id == id }?.authorID
         default: reportAuthorID = nil
         }
+        let source = model.sourceStories.first { $0.id == story.id }
+        reportUsesServer = usesLiveFeed && source.map { source in
+            switch type {
+            case "story": return source.id == id
+            case "answer": return source.answers.contains { $0.id == id }
+            case "reply": return source.answers.lazy.flatMap(\.replies).contains { $0.id == id }
+            default: return false
+            }
+        } == true
         openUtility("report")
     }
     func closeReport(){
@@ -422,40 +445,94 @@ extension ContentView {
         reportId = ""
         reportAuthorID = nil
         reportAlsoBlock = false
+        reportUsesServer = false
         withAnimation(transitionAnimation) { utility = back }
     }
+
+    private func recordReport(_ raw: String,details: NativeReportDetails) {
+        if !reports.contains(raw) { reports.append(raw) }
+        var records = localState.reportDetails ?? [:]
+        records[raw] = details
+        localState.reportDetails = records
+    }
+
+    private func recordBlock(_ record: NativeBlockedRecord) {
+        var records = localState.blockedRecords ?? []
+        if !records.contains(where:{ $0.id == record.id && $0.server == record.server }) { records.append(record) }
+        localState.blockedRecords = records
+        if !record.server {
+            localState.blockedAuthorIDs = (localState.blockedAuthorIDs ?? []).union([record.id])
+        }
+    }
+
     func confirmReport(){
+        guard !serverWriteInFlight else { return }
         guard let sid = reportStoryId,
-              model.stories.contains(where: { $0.id == sid && $0.created/1000+86400 > Date().timeIntervalSince1970 }) else {
+              let story = model.stories.first(where:{ $0.id == sid && $0.created/1000+86400 > Date().timeIntervalSince1970 }) else {
             closeReport()
             toast(l("这条烦恼已不可用","This story is no longer available"))
             return
         }
-        guard requireLogin("report") else{return}
-        let raw=[sid,reportType,reportId,reportReason].joined(separator:"|")
-        if !reports.contains(raw){reports.append(raw)}
-        if localState.reportDetails?[raw] == nil {
-            var details = localState.reportDetails ?? [:]
-            var record = reportDetails(raw)
-            record.createdAt = Date()
-            details[raw] = record
-            localState.reportDetails = details
+        let type = reportType, id = reportId, reason = reportReason
+        guard !isOwnReportTarget(type,id,in:story) else {
+            closeReport()
+            toast(l("不能举报自己的内容","You can’t report your own content"))
+            return
         }
-        let blocked = reportAlsoBlock ? reportAuthorID : nil
-        if let blocked {
-            localState.blockedAuthorIDs = (localState.blockedAuthorIDs ?? []).union([blocked])
+        guard requireLogin("report") else { return }
+        let raw = [sid,type,id,reason].joined(separator:"|")
+        var details = reportDetails(raw)
+        if details.createdAt == nil { details.createdAt = Date() }
+        let block = reportAlsoBlock
+        if reportUsesServer {
+            let viewer = serverViewer
+            serverWriteInFlight = true
+            Task {
+                defer { serverWriteInFlight = false }
+                do {
+                    if details.acceptanceStatus == nil {
+                        _ = try await model.mutate("report",fields:["id":id,"targetType":type,"value":reason],viewer:viewer)
+                        guard serverViewer == viewer else { return }
+                        details.acceptanceStatus = l("已提交，待审核","Submitted for review")
+                        recordReport(raw,details:details)
+                        persistLocal()
+                    }
+                    if block {
+                        do {
+                            _ = try await model.mutate("block-user",fields:["id":id,"targetType":type],viewer:viewer)
+                            guard serverViewer == viewer else { return }
+                            recordBlock(NativeBlockedRecord(id:"\(type):\(id)",nickname:details.targetNickname,blockedAt:Date(),server:true))
+                            persistLocal()
+                        } catch {
+                            guard serverViewer == viewer else { return }
+                            toast(l("举报已提交，拉黑未完成","Report submitted. Blocking didn’t complete."))
+                            return
+                        }
+                    }
+                    if reportId == id, utility == "report" { closeReport() }
+                    if block { await refreshServerFeed() }
+                    toast(block ? l("已举报并拉黑","Reported and blocked") : l("举报已提交","Report submitted"))
+                } catch {
+                    guard serverViewer == viewer else { return }
+                    toast(l("举报未能确认，请稍后重试","Couldn’t confirm the report. Try again later."))
+                }
+            }
+            return
+        }
+        recordReport(raw,details:details)
+        if block, let author = reportAuthorID {
+            recordBlock(NativeBlockedRecord(id:author,nickname:details.targetNickname,blockedAt:Date(),server:false))
         }
         closeReport()
-        if blocked != nil {
+        if block {
             rebuildVisibleStories()
-            if let reply = selectedReply {
-                selectedReply = discussionStory?.answers.first { $0.id == reply.id }
-            }
+            if let reply = selectedReply { selectedReply = discussionStory?.answers.first { $0.id == reply.id } }
         }
         persistLocal()
-        toast(blocked == nil ? l("举报已保存在本机","Report saved on this device")
-                             : l("已举报并拉黑","Reported and blocked"))
+        toast(block ? l("举报已保存在本机，已拉黑","Report saved on this device and user blocked")
+                    : l("举报已保存在本机","Report saved on this device"))
     }
+
     func updatePage(width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
         VStack(alignment:.leading,spacing:0){
             HStack(spacing:10){
@@ -607,6 +684,9 @@ extension ContentView {
                         Button {openUtility("profile-answers")} label:{profileTile("✧",iconBG:0xe7f1f6,iconColor:0x789fb2,label:l("我的建议","My responses"),count:answers,unread:unreadReplyCount)}
                         Button {openUtility("saved")} label:{profileTile("♡",iconBG:0xfaeee6,iconColor:0xc58c78,label:l("收藏","Saved"),count:snapshots.count)}
                         Button {openUtility("activity")} label:{profileTile("◌",iconBG:0xefecf3,iconColor:0xa096b0,label:l("举报记录","Report history"),count:reports.isEmpty ? nil:reports.count)}
+                        Button {openUtility("blocked")} label: {
+                            profileTile("⊘",iconBG:0xf1ebe9,iconColor:0x89716f,label:l("黑名单","Blocked users"),count:nil)
+                        }
                     }.padding(.top,12)
                 }.padding(.horizontal,18).padding(.bottom,bottom+H5Design.navigationHeight+12)
             }
@@ -797,6 +877,71 @@ extension ContentView {
                 }.padding(15)
             }
     }
+    private func blockedPage(width: CGFloat,height: CGFloat,top: CGFloat,bottom: CGFloat) -> some View {
+        let records = localState.blockedRecords ?? []
+        let legacy = (localState.blockedAuthorIDs ?? []).subtracting(records.filter { !$0.server }.map(\.id))
+        return VStack(alignment:.leading,spacing:12) {
+            HStack(spacing:10) {
+                Button { openUtility("profile") } label: {
+                    Image(systemName:"chevron.left").frame(width:44,height:44)
+                }.accessibilityLabel(l("返回","Back"))
+                Text(l("黑名单","Blocked users")).font(.system(size:19,weight:.bold))
+                Spacer()
+            }
+            ScrollView {
+                VStack(alignment:.leading,spacing:10) {
+                    if records.isEmpty && legacy.isEmpty {
+                        Text(l("还没有从这台设备拉黑的人","No users blocked from this device"))
+                            .font(.system(size:14)).foregroundColor(H5Design.muted)
+                            .frame(maxWidth:.infinity).padding(.vertical,24)
+                    }
+                    ForEach(records.sorted { $0.blockedAt > $1.blockedAt }) { record in
+                        blockedRow(record.nickname ?? l("匿名用户","Anonymous user"),
+                                   subtitle:record.blockedAt.formatted(date:.abbreviated,time:.shortened))
+                    }
+                    ForEach(legacy.sorted(),id:\.self) { _ in
+                        blockedRow(l("匿名用户","Anonymous user"),subtitle:l("本机拉黑","Blocked on this device"))
+                    }
+                }.padding(.bottom,12)
+            }
+            if !records.isEmpty || !legacy.isEmpty {
+                Button(l("解除全部拉黑","Unblock everyone")) { confirmingUnblockAll = true }
+                    .font(.system(size:14,weight:.semibold)).foregroundColor(Color(hex:0xb05e61))
+                    .frame(maxWidth:.infinity,minHeight:44).disabled(serverWriteInFlight)
+            }
+        }.padding(.horizontal,20).padding(.top,top+8).padding(.bottom,bottom+H5Design.navigationHeight+12)
+            .frame(width:width,height:height,alignment:.top)
+            .background(Color(hex:0xfffaf8))
+            .confirmationDialog(l("解除全部拉黑？","Unblock everyone?"),isPresented:$confirmingUnblockAll,titleVisibility:.visible) {
+                Button(l("解除全部","Unblock all"),role:.destructive) { unblockAll() }
+                Button(l("取消","Cancel"),role:.cancel) {}
+            }
+    }
+
+    private func blockedRow(_ name: String,subtitle: String) -> some View {
+        VStack(alignment:.leading,spacing:5) {
+            Text(name).font(.system(size:14,weight:.semibold))
+            Text(subtitle).font(.system(size:12)).foregroundColor(H5Design.muted)
+        }.padding(14).frame(maxWidth:.infinity,alignment:.leading)
+            .background(.white,in:RoundedRectangle(cornerRadius:15))
+    }
+
+    private func unblockAll() {
+        let remote = localState.blockedRecords?.contains { $0.server } == true
+        func clear() {
+            localState.blockedRecords = nil
+            localState.blockedAuthorIDs = nil
+            rebuildVisibleStories()
+            persistLocal()
+            toast(l("已解除全部拉黑","Everyone unblocked"))
+        }
+        if remote {
+            writeToServer("unblock-all",fields:[:]) { _ in clear() }
+        } else {
+            clear()
+        }
+    }
+
     func libraryPage(_ page:String,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
         let owned = ownedAnswerIDs
         let title:String, intro:String, empty:String
@@ -1059,7 +1204,9 @@ extension ContentView {
                                 Text(displayAuthor(answer)).font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0x9a8888))
                                 if answer.author.contains("AI") { Text("AI").font(.system(size:9,weight:.bold)).foregroundColor(Color(hex:0xa87336)).padding(.horizontal,5).padding(.vertical,2).background(Color(hex:0xf7ead6),in:Capsule()) }
                                 Spacer()
-                                Button {openReport("answer",answer.id)} label:{Text("⚑ "+l("举报","Report")).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d)).frame(height:26)}.buttonStyle(.plain)
+                                if !isOwnReportTarget("answer",answer.id,in:discussionStory) {
+                                    Button {openReport("answer",answer.id)} label:{Text("⚑ "+l("举报","Report")).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d)).frame(height:26)}.buttonStyle(.plain)
+                                }
                             }
                             answerText(answer.text,side:NativeCamp(rawValue:answer.side))
                                 .frame(maxWidth:.infinity,alignment:.leading)
@@ -1079,7 +1226,7 @@ extension ContentView {
                                         HStack{
                                             Text(displayAuthor(reply)).font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0x817276))
                                             Spacer(minLength:0)
-                                            if let rid=reply.id { Button {openReport("reply",rid)} label:{Text("⚑").font(.system(size:10)).foregroundColor(Color(hex:0xb0a29d)).frame(width:24,height:20)}.buttonStyle(.plain) }
+                                            if let rid=reply.id, !isOwnReportTarget("reply",rid,in:discussionStory) { Button {openReport("reply",rid)} label:{Text("⚑").font(.system(size:10)).foregroundColor(Color(hex:0xb0a29d)).frame(width:24,height:20)}.buttonStyle(.plain) }
                                         }
                                         answerText(reply.text,side:NativeCamp(rawValue:answer.side))
                                     }
