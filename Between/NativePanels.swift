@@ -933,7 +933,9 @@ private struct DetailAddition: ViewModifier {
     @Environment(\.detailRevealProgress) private var progress
 
     func body(content: Content) -> some View {
-        content.opacity(max(0,min(1,(progress-0.58)/0.42)))
+        content
+            .offset(y:CGFloat(1-progress)*32)
+            .opacity(max(0,min(1,(progress-0.40)/0.60)))
     }
 }
 

@@ -128,7 +128,7 @@ struct ContentView: View {
                     Color(hex:0x302532).opacity(0.40).zIndex(utility == "report" ? 29.5 : 5).contentShape(Rectangle()).onTapGesture{closeUtility()}.transition(.opacity)
                 }
                 if companionMode == .profile || companionMode == .library {
-                    Color(hex:0xfffaf8).zIndex(9).allowsHitTesting(false)
+                    Color(hex:0xfffaf8).zIndex(9).allowsHitTesting(false).transition(.opacity)
                 }
                 if let page = utility {
                     utilityPage(page,width:w,height:h,top:top,bottom:bottom).id(page).zIndex(page == "report" ? 30 : (companionMode == .library ? 11 : 10)).transition(pageTransition(page))
@@ -610,6 +610,10 @@ struct ContentView: View {
     func pageTransition(_ page:String)->AnyTransition {
         if page == "more" { return .move(edge:.bottom) }
         if page == "write" { return .move(edge:.bottom) }
+        if page == "profile" { return .offset(y:24).combined(with:.opacity) }
+        if ["profile-stories","profile-answers","saved","activity"].contains(page) {
+            return .offset(x:36).combined(with:.opacity)
+        }
         return .opacity
     }
     func openDetail(_ story:NativeStory,origin:CGRect? = nil){
@@ -655,7 +659,7 @@ struct ContentView: View {
                             dragUp:max(0,base.y-top-38)/scale,dragDown:max(0,height-base.y-38)/scale,
                             touchWidth:touchWidth,interactive:canTouch,context:mode,
                             moveWithFinger:move,cancelMove:writing ? { cancelWritingCompanionMove() } : nil)
-            .scaleEffect(scale).position(position)
+            .scaleEffect(scale).modifier(CompanionPosition(point:position))
             .opacity(opacity)
             .allowsHitTesting(canTouch)
             .overlay(alignment:.topLeading) {
@@ -916,6 +920,19 @@ enum CompanionMode:Equatable {
     case write(NativeCamp)
     case detail
 }
+private struct CompanionPosition: AnimatableModifier {
+    var point: CGPoint
+
+    var animatableData: AnimatablePair<CGFloat,CGFloat> {
+        get { AnimatablePair(point.x,point.y) }
+        set { point = CGPoint(x:newValue.first,y:newValue.second) }
+    }
+
+    func body(content: Content) -> some View {
+        content.position(point)
+    }
+}
+
 private struct CompanionPlacement:Equatable {
     var devilX:CGFloat = 63
     var angelX:CGFloat = 0
