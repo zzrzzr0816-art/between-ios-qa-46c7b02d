@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct NativeReply: Codable { let id: String?; let author: String; let text: String; var authorID: String? = nil }
+struct NativeReply: Codable { let id: String?; let author: String; let text: String; var authorID: String? = nil; var publicAuthorID: String? = nil }
 struct NativeAnswer: Codable, Identifiable {
     let id: String
     let author: String
@@ -9,6 +9,7 @@ struct NativeAnswer: Codable, Identifiable {
     var likes: Int
     var replies: [NativeReply]
     var authorID: String? = nil
+    var publicAuthorID: String? = nil
     var mine: Bool? = nil
 }
 struct NativeStory: Codable, Identifiable {
@@ -17,7 +18,9 @@ struct NativeStory: Codable, Identifiable {
     var detail: String? = nil
     let created: Double
     var answers: [NativeAnswer]
+    var author: String? = nil
     var authorID: String? = nil
+    var publicAuthorID: String? = nil
     var mine: Bool? = nil
 
     func hoursRemaining(at now: Double = Date().timeIntervalSince1970) -> Int {
@@ -28,6 +31,8 @@ struct NativeStory: Codable, Identifiable {
 }
 struct NativeReportDetails: Codable {
     var content: String?
+    var targetNickname: String?
+    var targetPublicID: String?
     var camp: String?
     var createdAt: Date?
     var acceptanceStatus: String?
@@ -258,7 +263,7 @@ enum NativeCamp: String {
             if BetweenPreviewMode.device, !sourceStories.isEmpty {
                 let zh = language == "zh"
                 let reply = NativeReply(id:"fixture-incoming-reply",author:zh ? "阿岸":"Rowan",
-                    text:zh ? "这个建议帮到我了，谢谢你。":"This helped me. Thank you.",authorID:"fixture-rowan")
+                    text:zh ? "这个建议帮到我了，谢谢你。":"This helped me. Thank you.",authorID:"fixture-rowan",publicAuthorID:"R5W2A8")
                 sourceStories[0].answers.append(NativeAnswer(id:"fixture-own-answer",author:zh ? "晚风":"Nightfall",
                     side:"angel",text:zh ? "可以先说你会想念对方。":"You could start by saying you’ll miss them.",likes:0,replies:[reply],mine:true))
             }
@@ -349,8 +354,13 @@ enum NativeCamp: String {
             for index in answers.indices {
                 answers[index].authorID = answers[index].id == "extra-devil" ? "fixture-june"
                     : answers[index].side == "angel" ? "fixture-mia" : "fixture-rowan"
+                answers[index].publicAuthorID = answers[index].id == "extra-devil" ? "J8N4C2"
+                    : answers[index].side == "angel" ? "M7K2Q9" : "R5W2A8"
             }
-            return NativeStory(id:"fixture-\(i)",text:text,created:created,answers:answers,authorID:i.isMultiple(of:2) ? "fixture-mia":"fixture-june")
+            return NativeStory(id:"fixture-\(i)",text:text,created:created,answers:answers,
+                author:i.isMultiple(of:2) ? (zh ? "小满":"Mia") : (zh ? "青禾":"June"),
+                authorID:i.isMultiple(of:2) ? "fixture-mia":"fixture-june",
+                publicAuthorID:i.isMultiple(of:2) ? "M7K2Q9":"J8N4C2")
         }
     }
 }

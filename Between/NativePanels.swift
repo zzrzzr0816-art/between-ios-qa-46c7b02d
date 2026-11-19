@@ -812,24 +812,35 @@ extension ContentView {
         }
     }
     private func reportDetails(_ key: String) -> NativeReportDetails {
-        if let stored = localState.reportDetails?[key] { return stored }
+        var record = localState.reportDetails?[key] ?? NativeReportDetails()
+        if record.targetNickname != nil { return record }
         let parts = reportParts(key)
         guard parts.count >= 3, let story = model.stories.first(where: { $0.id == parts[0] })
-                ?? model.sourceStories.first(where: { $0.id == parts[0] }) else { return NativeReportDetails() }
+                ?? model.sourceStories.first(where: { $0.id == parts[0] }) else { return record }
         switch parts[1] {
         case "answer":
-            let answer = story.answers.first { $0.id == parts[2] }
-            return NativeReportDetails(content:answer?.text,camp:answer?.side)
+            if let answer = story.answers.first(where: { $0.id == parts[2] }) {
+                record.content = record.content ?? answer.text
+                record.camp = record.camp ?? answer.side
+                record.targetNickname = answer.author
+                record.targetPublicID = answer.publicAuthorID
+            }
         case "reply":
             for answer in story.answers {
                 if let reply = answer.replies.first(where: { $0.id == parts[2] }) {
-                    return NativeReportDetails(content:reply.text,camp:answer.side)
+                    record.content = record.content ?? reply.text
+                    record.camp = record.camp ?? answer.side
+                    record.targetNickname = reply.author
+                    record.targetPublicID = reply.publicAuthorID
+                    break
                 }
             }
-            return NativeReportDetails()
         default:
-            return NativeReportDetails(content:story.text)
+            record.content = record.content ?? story.text
+            record.targetNickname = story.author
+            record.targetPublicID = story.publicAuthorID
         }
+        return record
     }
     private func reportStatus(_ record: NativeReportDetails) -> String {
         record.acceptanceStatus ?? l("仅保存在本机，未送审","Saved on this device · not submitted")
@@ -842,12 +853,13 @@ extension ContentView {
             : record.camp == "devil" ? l("恶魔阵营","Devil") : nil
         let category = [reportTypeLabel(key),direction].compactMap { $0 }.joined(separator:" · ")
         let available = max(1,height-top-bottom-32)
-        let cardHeight = min(448,available)
+        let cardHeight = min(360,available)
         let cardWidth = max(1,min(420,width-44))
         let target = CGRect(x:(width-cardWidth)/2,y:top+16+(available-cardHeight)/2,width:cardWidth,height:cardHeight)
-        let ink = Color(hex:0x302841)
-        let muted = Color(hex:0x6d627a)
-        let accent = Color(hex:0x574477)
+        let ink = Color(hex:0x342a29)
+        let muted = Color(hex:0x766561)
+        let name = record.targetNickname ?? l("匿名用户","Anonymous user")
+        let identity = record.targetPublicID.map { "\(name) · ID \($0)" } ?? name
         let shape = RoundedRectangle(cornerRadius:20)
         return ZStack(alignment:.topLeading) {
             VStack(alignment:.leading,spacing:0) {
@@ -857,53 +869,49 @@ extension ContentView {
                     Button { withAnimation(transitionAnimation) { selectedReport = nil } } label: {
                         Image(systemName:"xmark").font(.system(size:13,weight:.semibold))
                             .foregroundColor(muted)
-                            .frame(width:32,height:32).background(Color(hex:0xeee9f2),in:Circle())
+                            .frame(width:32,height:32).background(Color(hex:0xf1e9e3),in:Circle())
                             .frame(width:44,height:44).contentShape(Rectangle())
                     }.accessibilityLabel(l("关闭举报详情","Close report details"))
                 }.padding(.leading,20).padding(.trailing,12).padding(.top,10)
                 ScrollView {
-                    VStack(alignment:.leading,spacing:16) {
-                        HStack(alignment:.top,spacing:12) {
-                            Image(systemName:"flag").font(.system(size:15,weight:.semibold))
-                                .foregroundColor(accent).frame(width:34,height:34)
-                                .background(Color(hex:0xe4dbef),in:RoundedRectangle(cornerRadius:11))
-                                .accessibilityHidden(true)
-                            VStack(alignment:.leading,spacing:5) {
+                    VStack(alignment:.leading,spacing:12) {
+                        HStack(alignment:.top,spacing:10) {
+                            Circle().fill(record.result?.isEmpty == false ? Color(hex:0x52785c) : Color(hex:0x9e6b29))
+                                .frame(width:7,height:7).padding(.top,5).accessibilityHidden(true)
+                            VStack(alignment:.leading,spacing:4) {
                                 Text(reportStatus(record)).font(.system(size:14,weight:.semibold))
-                                if let result = record.result, !result.isEmpty {
-                                    Text(result).font(.system(size:13)).foregroundColor(muted)
-                                } else {
-                                    Text(l("暂无处理结果","No outcome yet")).font(.system(size:13)).foregroundColor(muted)
-                                }
+                                Text(record.result.flatMap { $0.isEmpty ? nil : $0 } ?? l("暂无处理结果","No outcome yet"))
+                                    .font(.system(size:13)).foregroundColor(muted)
                             }.frame(maxWidth:.infinity,alignment:.leading)
-                        }.padding(12).background(Color(hex:0xf0ebf6),in:RoundedRectangle(cornerRadius:14))
-
-                        VStack(alignment:.leading,spacing:8) {
-                            Text(l("被举报内容","Reported content"))
-                                .font(.system(size:12,weight:.semibold)).foregroundColor(muted)
-                            Text(record.content ?? l("内容已不可用","Content unavailable"))
-                                .font(.system(size:15)).lineSpacing(4)
-                                .fixedSize(horizontal:false,vertical:true)
-                                .frame(maxWidth:.infinity,alignment:.leading)
-                                .padding(13)
-                                .background(.white,in:RoundedRectangle(cornerRadius:13))
-                                .overlay(RoundedRectangle(cornerRadius:13).strokeBorder(Color(hex:0xece6ef),lineWidth:1))
                         }
-
-                        VStack(spacing:9) {
-                            reportMetadata(l("举报对象","Target"),category,muted:muted)
+                        Divider().overlay(Color(hex:0xeee2d9))
+                        VStack(spacing:7) {
+                            reportMetadata(l("举报对象","Target"),identity,muted:muted)
+                            reportMetadata(l("内容类型","Content type"),category,muted:muted)
                             reportMetadata(l("举报原因","Reason"),reason,muted:muted)
                             if let date = record.createdAt {
                                 reportMetadata(l("记录时间","Recorded"),date.formatted(date:.abbreviated,time:.shortened),muted:muted)
                             }
                         }
+                        VStack(alignment:.leading,spacing:6) {
+                            Text(l("被举报内容","Reported content"))
+                                .font(.system(size:12,weight:.semibold)).foregroundColor(muted)
+                            Text(record.content ?? l("内容已不可用","Content unavailable"))
+                                .font(.system(size:14)).lineSpacing(4)
+                                .fixedSize(horizontal:false,vertical:true)
+                                .frame(maxWidth:.infinity,alignment:.leading)
+                                .padding(.leading,10)
+                                .overlay(alignment:.leading) {
+                                    Capsule().fill(Color(hex:0xc3a48d)).frame(width:2)
+                                }
+                        }
                     }.padding(.horizontal,20).padding(.top,8).padding(.bottom,20)
                 }
             }.foregroundColor(ink)
                 .frame(width:cardWidth,height:cardHeight)
-                .background(Color(hex:0xfcfafe),in:shape)
+                .background(Color(hex:0xfffbf7),in:shape)
                 .clipShape(shape)
-                .overlay(shape.strokeBorder(Color(hex:0xece5f0),lineWidth:1))
+                .overlay(shape.strokeBorder(Color(hex:0xeee2d9),lineWidth:1))
                 .position(x:target.midX,y:target.midY)
         }.frame(width:width,height:height)
             .transition(replyReveal(from:reportOrigin,to:target))
