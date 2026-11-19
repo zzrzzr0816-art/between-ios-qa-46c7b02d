@@ -87,7 +87,7 @@ extension ContentView {
         let isLiked = online ? answer.liked == true : liked[answer.id] == true
         return VStack(alignment:.leading,spacing:0){
             HStack{
-                Text(answer.author).font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0x9a8888))
+                Text(displayAuthor(answer)).font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0x9a8888))
                 if answer.author.contains("AI") { Text("AI").font(.system(size:9,weight:.bold)).foregroundColor(Color(hex:0xa87336)).padding(.horizontal,5).padding(.vertical,2).background(Color(hex:0xf7ead6),in:Capsule()) }
                 Spacer()
                 if isBest { Text("✦ " + l("最佳","Best")).font(.system(size:11)).foregroundColor(Color(hex:0xa87336)) }
@@ -142,6 +142,16 @@ extension ContentView {
             .onTapGesture {openReply(answer)}
             .accessibilityHidden(selectedReply?.id == answer.id)
     }
+    private func displayAuthor(_ answer: NativeAnswer) -> String {
+        let mine = answer.mine == true || localState.answerOwnership?.contains(answer.id) == true
+        return mine ? auth.account?.nickname ?? answer.author : answer.author
+    }
+
+    private func displayAuthor(_ reply: NativeReply) -> String {
+        let mine = reply.mine == true || reply.id.map { localState.replyOwnership?.contains($0) == true } == true
+        return mine ? auth.account?.nickname ?? reply.author : reply.author
+    }
+
     private func answerText(_ text: String,side: NativeCamp?) -> some View {
         let share = MusicDraft.display(text)
         return VStack(alignment:.leading,spacing:8) {
@@ -821,44 +831,56 @@ extension ContentView {
                     }
                     ForEach(Array(items.enumerated()),id:\.offset){ index,item in
                         let frameKey = "library-\(page)-\(index)"
-                        VStack(alignment:.leading,spacing:8){
-                            HStack {
-                                Text(title).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d))
-                                Spacer()
-                                if page == "profile-answers", let answer = item.2?.answers.first(where: { $0.id == item.3 }) {
-                                    let unread = unreadReplyIDs(in:answer).count
-                                    if unread > 0 { replyBadge(unread) }
+                        VStack(alignment:.leading,spacing:5) {
+                            VStack(alignment:.leading,spacing:8) {
+                                HStack {
+                                    Text(title).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d))
+                                    Spacer()
+                                    if page == "profile-answers", let answer = item.2?.answers.first(where: { $0.id == item.3 }) {
+                                        let unread = unreadReplyIDs(in:answer).count
+                                        if unread > 0 { replyBadge(unread) }
+                                    }
                                 }
+                                Text(item.0).font(.system(size:14)).foregroundColor(Color(hex:0x59484b)).fixedSize(horizontal:false,vertical:true)
+                                Text(item.1).font(.system(size:12)).foregroundColor(Color(hex:0x9b8d8b)).lineLimit(2)
+                            }.frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
+                                .onTapGesture {
+                                    switch page {
+                                    case "saved":
+                                        if let story = item.2 {
+                                            snapshotOrigin = cardFrames[frameKey]
+                                            withAnimation(transitionAnimation){snapshotStory=story}
+                                        }
+                                    case "profile-answers":
+                                        guard let story = item.2, let answer = story.answers.first(where: { $0.id == item.3 }) else { return }
+                                        discussionID = story.id
+                                        openReply(answer)
+                                    case "activity":
+                                        if let key = item.3 {
+                                            reportOrigin = cardFrames[frameKey]
+                                            withAnimation(transitionAnimation) { selectedReport = key }
+                                        }
+                                    default: if let story=item.2 {openDetail(story)}
+                                    }
+                                }
+                            if page == "profile-answers", let story = item.2 {
+                                Button { openDetail(story) } label: {
+                                    Label(l("查看原帖","View original"),systemImage:"arrow.up.right")
+                                        .font(.system(size:12,weight:.semibold))
+                                        .foregroundColor(Color(hex:0x4d7188))
+                                        .padding(.horizontal,10).frame(minHeight:44)
+                                        .contentShape(Rectangle())
+                                }.buttonStyle(PressScale())
                             }
-                            Text(item.0).font(.system(size:14)).foregroundColor(Color(hex:0x59484b)).fixedSize(horizontal:false,vertical:true)
-                            Text(item.1).font(.system(size:12)).foregroundColor(Color(hex:0x9b8d8b)).lineLimit(2)
-                        }.padding(15).frame(maxWidth:.infinity,alignment:.leading).background(.white,in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xf0e9e7),lineWidth:1))
+                        }.padding(15).frame(maxWidth:.infinity,alignment:.leading)
+                            .background(.white,in:RoundedRectangle(cornerRadius:16))
+                            .overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xf0e9e7),lineWidth:1).allowsHitTesting(false))
                             .background {
                                 if (page == "saved" && item.2 != nil) || page == "activity" {
                                     GeometryReader { proxy in
                                         Color.clear.preference(key:CardFrames.self,
                                                                value:[frameKey:proxy.frame(in:.named("card-stage"))])
                                     }
-                                }
-                            }
-                            .contentShape(RoundedRectangle(cornerRadius:16))
-                            .onTapGesture {
-                                switch page {
-                                case "saved":
-                                    if let story = item.2 {
-                                        snapshotOrigin = cardFrames[frameKey]
-                                        withAnimation(transitionAnimation){snapshotStory=story}
-                                    }
-                                case "profile-answers":
-                                    guard let story = item.2, let answer = story.answers.first(where: { $0.id == item.3 }) else { return }
-                                    discussionID = story.id
-                                    openReply(answer)
-                                case "activity":
-                                    if let key = item.3 {
-                                        reportOrigin = cardFrames[frameKey]
-                                        withAnimation(transitionAnimation) { selectedReport = key }
-                                    }
-                                default: if let story=item.2 {openDetail(story)}
                                 }
                             }
                     }
@@ -1034,7 +1056,7 @@ extension ContentView {
                     VStack(alignment:.leading,spacing:16){
                         VStack(alignment:.leading,spacing:8){
                             HStack{
-                                Text(answer.author).font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0x9a8888))
+                                Text(displayAuthor(answer)).font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0x9a8888))
                                 if answer.author.contains("AI") { Text("AI").font(.system(size:9,weight:.bold)).foregroundColor(Color(hex:0xa87336)).padding(.horizontal,5).padding(.vertical,2).background(Color(hex:0xf7ead6),in:Capsule()) }
                                 Spacer()
                                 Button {openReport("answer",answer.id)} label:{Text("⚑ "+l("举报","Report")).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d)).frame(height:26)}.buttonStyle(.plain)
@@ -1055,7 +1077,7 @@ extension ContentView {
                                     Text("✦").font(.system(size:13)).foregroundColor(accent).frame(width:26,height:26).background(accent.opacity(0.12),in:Circle())
                                     VStack(alignment:.leading,spacing:4){
                                         HStack{
-                                            Text(reply.author).font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0x817276))
+                                            Text(displayAuthor(reply)).font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0x817276))
                                             Spacer(minLength:0)
                                             if let rid=reply.id { Button {openReport("reply",rid)} label:{Text("⚑").font(.system(size:10)).foregroundColor(Color(hex:0xb0a29d)).frame(width:24,height:20)}.buttonStyle(.plain) }
                                         }

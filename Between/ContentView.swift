@@ -50,7 +50,7 @@ struct ContentView: View {
 
     func unreadReplyIDs(in answer: NativeAnswer) -> Set<String> {
         guard answer.mine == true || localState.answerOwnership?.contains(answer.id) == true else { return [] }
-        return Set(answer.replies.compactMap(\.id))
+        return Set(answer.replies.filter { $0.mine != true }.compactMap(\.id))
             .subtracting(localState.replyOwnership ?? [])
             .subtracting(localState.seenIncomingReplies ?? [])
     }

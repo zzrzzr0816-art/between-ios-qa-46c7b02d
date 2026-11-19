@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct NativeReply: Codable, Equatable { let id: String?; let author: String; let text: String; var authorID: String? = nil; var publicAuthorID: String? = nil }
+struct NativeReply: Codable, Equatable { let id: String?; let author: String; let text: String; var authorID: String? = nil; var publicAuthorID: String? = nil; var mine: Bool? = nil }
 struct NativeAnswer: Codable, Identifiable, Equatable {
     let id: String
     let author: String
