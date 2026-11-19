@@ -267,6 +267,15 @@ struct ContentView: View {
         let args=ProcessInfo.processInfo.arguments
         if args.contains(where: { ["-ui-comments","-ui-drag","-ui-reply"].contains($0) }) { discussionID = model.current?.id }
         if args.contains("-ui-profile") {utility = "profile"}
+        if args.contains("-ui-report-shot"), let story = model.current,
+           let answer = story.answers.first {
+            let key = [story.id,"answer",answer.id,"harassment"].joined(separator:"|")
+            reports = [key]
+            localState.reportDetails = [key:NativeReportDetails(content:answer.text,camp:answer.side)]
+            utility = "activity"
+            selectedReport = key
+        }
+
         if args.contains("-ui-write") {utility = "write"}
         if args.contains("-ui-more") {utility = "more"}
         if args.contains("-ui-comments") {camp = .angel; campProgress = 1}

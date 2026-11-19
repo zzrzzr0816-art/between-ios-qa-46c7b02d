@@ -1,0 +1,37 @@
+name: Report screenshot
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  screenshot:
+    runs-on: macos-15
+    timeout-minutes: 19
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          if [ -d /Applications/Xcode_16.4.app ]; then sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer; fi
+          xcodebuild -project Between.xcodeproj -target Between -configuration Debug -sdk iphonesimulator CONFIGURATION_BUILD_DIR="$RUNNER_TEMP/report-build" CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/build.log" 2>&1 || { cat "$RUNNER_TEMP/build.log"; exit 1; }
+      - name: Capture iPhone screenshot
+        run: |
+          set -euo pipefail
+          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x["isAvailable"] and x["name"].startswith("iOS")]; print(next((x["identifier"] for x in r if x["version"].startswith("18.")),r[-1]["identifier"]))')
+          DEVICE=$(xcrun simctl create Between-Report com.apple.CoreSimulator.SimDeviceType.iPhone-16 "$RUNTIME")
+          xcrun simctl boot "$DEVICE"
+          open -a "$(xcode-select -p)/Applications/Simulator.app" --args -CurrentDeviceUDID "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl status_bar "$DEVICE" override --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState unplugged --batteryLevel 100 || true
+          xcrun simctl install "$DEVICE" "$RUNNER_TEMP/report-build/Between.app"
+          xcrun simctl launch "$DEVICE" com.example.between.preview -preview-fixture -ui-zh -ui-report-shot > "$RUNNER_TEMP/launch.log" 2>&1 &
+          LAUNCH=$!
+          mkdir -p "$RUNNER_TEMP/shots"
+          for n in 1 2 3 4; do
+            sleep 12
+            xcrun simctl io "$DEVICE" screenshot "$RUNNER_TEMP/shots/report-$n.png" || true
+          done
+          kill "$LAUNCH" 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-screenshots
+          path: ${{ runner.temp }}/shots/
