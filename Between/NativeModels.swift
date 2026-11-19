@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct NativeReply: Codable { let id: String?; let author: String; let text: String }
+struct NativeReply: Codable { let id: String?; let author: String; let text: String; var authorID: String? = nil }
 struct NativeAnswer: Codable, Identifiable {
     let id: String
     let author: String
@@ -8,6 +8,8 @@ struct NativeAnswer: Codable, Identifiable {
     let text: String
     var likes: Int
     var replies: [NativeReply]
+    var authorID: String? = nil
+    var mine: Bool? = nil
 }
 struct NativeStory: Codable, Identifiable {
     let id: String
@@ -15,6 +17,8 @@ struct NativeStory: Codable, Identifiable {
     var detail: String? = nil
     let created: Double
     var answers: [NativeAnswer]
+    var authorID: String? = nil
+    var mine: Bool? = nil
 
     func hoursRemaining(at now: Double = Date().timeIntervalSince1970) -> Int {
         let remaining = (created/1000+86400-now)/3600
@@ -37,6 +41,23 @@ struct NativeLocalState: Codable {
     var replyStory: [String: String]? = nil
     var answerOwnership: Set<String>? = nil
     var replyOwnership: Set<String>? = nil
+    var seenIncomingReplies: Set<String>? = nil
+    var blockedAuthorIDs: Set<String>? = nil
+
+    func isBlocked(_ authorID: String?) -> Bool {
+        authorID.map { blockedAuthorIDs?.contains($0) == true } ?? false
+    }
+
+    func filteringBlockedAuthors(in story: NativeStory) -> NativeStory? {
+        guard !isBlocked(story.authorID) else { return nil }
+        var visible = story
+        visible.answers = story.answers.filter { !isBlocked($0.authorID) }.map { answer in
+            var answer = answer
+            answer.replies.removeAll { isBlocked($0.authorID) }
+            return answer
+        }
+        return visible
+    }
 
     mutating func rememberExpiry(of story: NativeStory) {
         var expiry = storyExpiry ?? [:]
@@ -86,7 +107,7 @@ struct NativeLocalState: Codable {
                     reply.id.map { ids.insert($0).inserted } ?? false
                 })
             }
-            if !hidden.contains(story.id) { visible.append(story) }
+            if !hidden.contains(story.id), let filtered = filteringBlockedAuthors(in:story) { visible.append(filtered) }
         }
         return (visible, changed)
     }
@@ -225,6 +246,13 @@ enum NativeCamp: String {
         if preview {
             loadedLanguage = language
             sourceStories = Self.fixtures(language)
+            if BetweenPreviewMode.device, !sourceStories.isEmpty {
+                let zh = language == "zh"
+                let reply = NativeReply(id:"fixture-incoming-reply",author:zh ? "阿岸":"Rowan",
+                    text:zh ? "这个建议帮到我了，谢谢你。":"This helped me. Thank you.",authorID:"fixture-rowan")
+                sourceStories[0].answers.append(NativeAnswer(id:"fixture-own-answer",author:zh ? "晚风":"Nightfall",
+                    side:"angel",text:zh ? "可以先说你会想念对方。":"You could start by saying you’ll miss them.",likes:0,replies:[reply],mine:true))
+            }
             return true
         }
         loading = true; error = false
@@ -309,12 +337,24 @@ enum NativeCamp: String {
                 ]
             }
             if i == 1 { answers.append(NativeAnswer(id:"extra-devil",author:zh ? "青禾":"June",side:"devil",text:zh ? "先试一件你真的好奇的事。别人有计划不代表你必须照着走。":"Try one thing you are actually curious about. Someone else's plan does not have to become your deadline.",likes:0,replies:[])) }
-            return NativeStory(id:"fixture-\(i)",text:text,created:created,answers:answers)
+            for index in answers.indices {
+                answers[index].authorID = answers[index].id == "extra-devil" ? "fixture-june"
+                    : answers[index].side == "angel" ? "fixture-mia" : "fixture-rowan"
+            }
+            return NativeStory(id:"fixture-\(i)",text:text,created:created,answers:answers,authorID:i.isMultiple(of:2) ? "fixture-mia":"fixture-june")
         }
     }
 }
 
 enum BetweenPreviewMode {
+    static var device: Bool {
+        #if BETWEEN_DEVICE_PREVIEW
+        return true
+        #else
+        return false
+        #endif
+    }
+
     static var enabled: Bool {
         #if BETWEEN_DEVICE_PREVIEW
         return true

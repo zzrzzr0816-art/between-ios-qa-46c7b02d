@@ -314,6 +314,10 @@ extension ContentView {
                         }.padding(15).frame(maxWidth:.infinity).background(.white,in:RoundedRectangle(cornerRadius:14)).overlay(RoundedRectangle(cornerRadius:14).stroke(Color(hex:0xf0e7e2),lineWidth:1))
                     }
                 }
+                if reportAuthorID != nil {
+                    Toggle(l("同时拉黑此人","Also block this person"),isOn:$reportAlsoBlock)
+                        .font(.system(size:14)).tint(Color(hex:0xb76f73))
+                }
                 Button {confirmReport()} label:{
                     Text(l("确认举报","Confirm report")).font(.system(size:15,weight:.bold)).foregroundColor(.white).frame(maxWidth:.infinity,minHeight:46).background(Color(hex:0x443a43),in:RoundedRectangle(cornerRadius:14))
                 }.padding(.top,4)
@@ -330,6 +334,15 @@ extension ContentView {
         reportReason = "harassment"
         reportFrom = utility
         reportType=type;reportId=id
+        reportAlsoBlock = false
+        switch type {
+        case "story": reportAuthorID = story.id.hasPrefix("local-") || story.mine == true ? nil : story.authorID
+        case "answer": reportAuthorID = ownedAnswerIDs.contains(id) ? nil : story.answers.first { $0.id == id }?.authorID
+        case "reply":
+            reportAuthorID = localState.replyOwnership?.contains(id) == true ? nil
+                : story.answers.lazy.flatMap(\.replies).first { $0.id == id }?.authorID
+        default: reportAuthorID = nil
+        }
         openUtility("report")
     }
     func closeReport(){
@@ -337,6 +350,8 @@ extension ContentView {
         reportFrom = nil
         reportStoryId = nil
         reportId = ""
+        reportAuthorID = nil
+        reportAlsoBlock = false
         withAnimation(transitionAnimation) { utility = back }
     }
     func confirmReport(){
@@ -349,9 +364,20 @@ extension ContentView {
         guard requireLogin("report") else{return}
         let raw=[sid,reportType,reportId,reportReason].joined(separator:"|")
         if !reports.contains(raw){reports.append(raw)}
-        persistLocal()
+        let blocked = reportAlsoBlock ? reportAuthorID : nil
+        if let blocked {
+            localState.blockedAuthorIDs = (localState.blockedAuthorIDs ?? []).union([blocked])
+        }
         closeReport()
-        toast(l("举报已保存在本机","Report saved on this device"))
+        if blocked != nil {
+            rebuildVisibleStories()
+            if let reply = selectedReply {
+                selectedReply = discussionStory?.answers.first { $0.id == reply.id }
+            }
+        }
+        persistLocal()
+        toast(blocked == nil ? l("举报已保存在本机","Report saved on this device")
+                             : l("已举报并拉黑","Reported and blocked"))
     }
     func updatePage(width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
         VStack(alignment:.leading,spacing:0){
@@ -492,7 +518,7 @@ extension ContentView {
                     accountSection.padding(.top,8)
                     LazyVGrid(columns:columns,spacing:10){
                         Button {openUtility("profile-stories")} label:{profileTile("✎",iconBG:0xfae7e2,iconColor:0xbe7770,label:l("我的烦恼","My stories"),count:model.stories.filter{$0.id.hasPrefix("local-")}.count)}
-                        Button {openUtility("profile-answers")} label:{profileTile("✧",iconBG:0xe7f1f6,iconColor:0x789fb2,label:l("我的建议","My responses"),count:answers)}
+                        Button {openUtility("profile-answers")} label:{profileTile("✧",iconBG:0xe7f1f6,iconColor:0x789fb2,label:l("我的建议","My responses"),count:answers,unread:unreadReplyCount)}
                         Button {openUtility("saved")} label:{profileTile("♡",iconBG:0xfaeee6,iconColor:0xc58c78,label:l("收藏","Saved"),count:snapshots.count)}
                         Button {openUtility("activity")} label:{profileTile("◌",iconBG:0xefecf3,iconColor:0xa096b0,label:l("举报记录","Report history"),count:reports.isEmpty ? nil:reports.count)}
                     }.padding(.top,12)
@@ -540,8 +566,13 @@ extension ContentView {
                     }.padding(.top,12)
                     if let error=auth.errorText { Text(error).font(.system(size:11)).foregroundColor(Color(hex:0xb85657)).padding(.top,8) }
                 }.padding(18).frame(maxWidth:.infinity,alignment:.leading)
-                    .background(Color(hex:0xf8e8e5),in:RoundedRectangle(cornerRadius:20))
-                    .overlay(RoundedRectangle(cornerRadius:20).stroke(Color(hex:0xebceca),lineWidth:1))
+                    .background {
+                        RoundedRectangle(cornerRadius:20).fill(
+                            LinearGradient(colors:[Color(hex:0xf0ccc7),Color(hex:0xe9bbb9)],
+                                           startPoint:.topLeading,endPoint:.bottomTrailing))
+                    }
+                    .overlay(RoundedRectangle(cornerRadius:20).strokeBorder(Color(hex:0xdba7a5),lineWidth:1))
+                    .shadow(color:Color(hex:0x995867).opacity(0.12),radius:10,y:4)
                     .transition(.opacity)
             } else {
                 VStack(alignment:.leading,spacing:0){
@@ -653,7 +684,7 @@ extension ContentView {
         withAnimation(transitionAnimation){nicknameMode=false}
     }
     func openUtility(_ page:String){withAnimation(transitionAnimation){utility=page}}
-    func profileTile(_ icon:String,iconBG:UInt32,iconColor:UInt32,label:String,count:Int?)->some View {
+    func profileTile(_ icon:String,iconBG:UInt32,iconColor:UInt32,label:String,count:Int?,unread:Int = 0)->some View {
         VStack(alignment:.leading,spacing:0){
             Text(icon).font(.system(size:20)).foregroundColor(Color(hex:iconColor)).frame(width:34,height:34).background(Color(hex:iconBG),in:RoundedRectangle(cornerRadius:12))
             Spacer(minLength:12)
@@ -663,7 +694,12 @@ extension ContentView {
             }
         }.padding(13).frame(maxWidth:.infinity,minHeight:114,alignment:.leading)
             .background(.white,in:RoundedRectangle(cornerRadius:19)).overlay(RoundedRectangle(cornerRadius:19).stroke(Color(hex:0xf2e8e3),lineWidth:1))
-            .overlay(Text("↗").font(.system(size:15)).foregroundColor(Color(hex:0xc5b5af)).padding(.top,15).padding(.trailing,15),alignment:.topTrailing)
+            .overlay(alignment:.topTrailing) {
+                Group {
+                    if unread > 0 { replyBadge(unread) }
+                    else { Text("↗").font(.system(size:15)).foregroundColor(Color(hex:0xc5b5af)) }
+                }.padding(15)
+            }
     }
     func libraryPage(_ page:String,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
         let owned = ownedAnswerIDs
@@ -671,13 +707,13 @@ extension ContentView {
         switch page {
         case "profile-stories": title=l("我的烦恼","My stories");intro=l("写下的心事，会在这里停留 24 小时。","Your stories stay here for 24 hours.");empty=l("还没有发布过烦恼。","You haven’t shared a story yet.")
         case "profile-answers": title=l("我的建议","My responses");intro=l("你留下的建议，都在这里。","The conversations you have joined.");empty=l("还没有发表过建议。","You haven’t shared a response yet.")
-        case "saved": title=l("我的私密快照","Your private snapshots");intro=l("只属于你的讨论留存，烦恼到期或被移除时一同删除。","Your private snapshots are deleted when their stories expire or are removed.");empty=l("还没有收藏过讨论。","No saved discussions yet.")
+        case "saved": title=l("我的私密快照","Your private snapshots");intro=l("应用内的只读讨论副本，烦恼到期或被移除时一同删除。","Read-only copies in the app. They are deleted when the original story expires or is removed.");empty=l("还没有收藏过讨论。","No saved discussions yet.")
         default: title=l("举报记录","Report history");intro=l("这里会显示保存在本机的举报。","Reports saved on this device appear here.");empty=l("暂时没有新动态","Nothing new here yet")
         }
         var items:[(String,String,NativeStory?,String?)] = []
-        if page=="profile-answers" { for story in model.stories { for answer in story.answers where owned.contains(answer.id) { items.append((answer.text,story.text,story,nil)) } } }
+        if page=="profile-answers" { for story in model.stories { for answer in story.answers where owned.contains(answer.id) { items.append((answer.text,story.text,story,answer.id)) } } }
         if page=="profile-stories" { for story in model.stories where story.id.hasPrefix("local-") { items.append((story.text,l("24 小时后消失","Expires in 24 hours"),story,nil)) } }
-        if page=="saved" { for story in snapshots { items.append((story.text,l("快照 · 只读","Snapshot · read only"),story,nil)) } }
+        if page=="saved" { for story in snapshots.compactMap({ localState.filteringBlockedAuthors(in:$0) }) { items.append((story.text,l("快照 · 只读","Snapshot · read only"),story,nil)) } }
         if page=="activity" {
             for raw in reports {
                 let parts=raw.split(separator:"|").map(String.init)
@@ -704,7 +740,14 @@ extension ContentView {
                     ForEach(Array(items.enumerated()),id:\.offset){ index,item in
                         let frameKey = "library-\(page)-\(index)"
                         VStack(alignment:.leading,spacing:8){
-                            Text(title).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d))
+                            HStack {
+                                Text(title).font(.system(size:11)).foregroundColor(Color(hex:0xb0a29d))
+                                Spacer()
+                                if page == "profile-answers", let answer = item.2?.answers.first(where: { $0.id == item.3 }) {
+                                    let unread = unreadReplyIDs(in:answer).count
+                                    if unread > 0 { replyBadge(unread) }
+                                }
+                            }
                             Text(item.0).font(.system(size:14)).foregroundColor(Color(hex:0x59484b)).fixedSize(horizontal:false,vertical:true)
                             Text(item.1).font(.system(size:12)).foregroundColor(Color(hex:0x9b8d8b)).lineLimit(2)
                         }.padding(15).frame(maxWidth:.infinity,alignment:.leading).background(.white,in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xf0e9e7),lineWidth:1))
@@ -724,6 +767,16 @@ extension ContentView {
                                         snapshotOrigin = cardFrames[frameKey]
                                         withAnimation(transitionAnimation){snapshotStory=story}
                                     }
+                                case "profile-answers":
+                                    guard let story = item.2, let answer = story.answers.first(where: { $0.id == item.3 }),
+                                          let side = NativeCamp(rawValue:answer.side) else { return }
+                                    withAnimation(transitionAnimation) {
+                                        openDetail(story,origin:cardFrames[frameKey])
+                                        discussionID = story.id
+                                        camp = side
+                                        campProgress = 1
+                                        openReply(answer)
+                                    }
                                 case "activity": if let key=item.3 {if reviewed.contains(key){reviewed.removeAll{$0==key}}else{reviewed.append(key)};persistLocal()}
                                 default: if let story=item.2 {openDetail(story,origin:cardFrames[frameKey])}
                                 }
@@ -738,6 +791,11 @@ extension ContentView {
         composerFocused = false
         replyText = ""
         replyOrigin = cardFrames[answer.id]
+        let unread = unreadReplyIDs(in:answer)
+        if !unread.isEmpty {
+            localState.seenIncomingReplies = (localState.seenIncomingReplies ?? []).union(unread)
+            persistLocal()
+        }
         withAnimation(transitionAnimation) { selectedReply = answer }
     }
     func closeReply() {

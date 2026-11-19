@@ -37,9 +37,23 @@ struct ContentView: View {
         model.stories.first { $0.id == discussionID }
     }
     var ownedAnswerIDs: Set<String> {
-        localState.answerOwnership ?? []
+        (localState.answerOwnership ?? []).union(model.stories.flatMap(\.answers).filter { $0.mine == true }.map(\.id))
     }
     @State var utility: String? = nil
+    @State var reportAuthorID: String?
+    @State var reportAlsoBlock = false
+
+    func unreadReplyIDs(in answer: NativeAnswer) -> Set<String> {
+        guard answer.mine == true || localState.answerOwnership?.contains(answer.id) == true else { return [] }
+        return Set(answer.replies.compactMap(\.id))
+            .subtracting(localState.replyOwnership ?? [])
+            .subtracting(localState.seenIncomingReplies ?? [])
+    }
+
+    var unreadReplyCount: Int {
+        guard auth.isReady else { return 0 }
+        return model.stories.flatMap(\.answers).reduce(0) { $0 + unreadReplyIDs(in:$1).count }
+    }
     @State var selectedReply: NativeAnswer? = nil
     @State var cardFrames: [String: CGRect] = [:]
     @State var replyOrigin: CGRect? = nil
@@ -130,7 +144,13 @@ struct ContentView: View {
                 if companionMode == .profile || companionMode == .library {
                     Color(hex:0xfffaf8).zIndex(9).allowsHitTesting(false).transition(.opacity)
                 }
-                if let page = utility {
+                if companionMode == .profile || companionMode == .library {
+                    profilePage(width:w,height:h,top:top,bottom:bottom)
+                        .allowsHitTesting(companionMode == .profile)
+                        .accessibilityHidden(companionMode != .profile)
+                        .zIndex(10).transition(pageTransition("profile"))
+                }
+                if let page = utility, page != "profile" {
                     utilityPage(page,width:w,height:h,top:top,bottom:bottom).id(page).zIndex(page == "report" ? 30 : (companionMode == .library ? 11 : 10)).transition(pageTransition(page))
                 }
                 if let answer = selectedReply { replyOverlay(answer,width:w,height:h,top:top,bottom:bottom).zIndex(29) }
@@ -611,7 +631,7 @@ struct ContentView: View {
         if page == "write" { return .move(edge:.bottom) }
         if page == "profile" { return .offset(y:24).combined(with:.opacity) }
         if ["profile-stories","profile-answers","saved","activity"].contains(page) {
-            return .offset(x:36).combined(with:.opacity)
+            return .move(edge:.trailing)
         }
         return .opacity
     }
@@ -866,6 +886,14 @@ struct ContentView: View {
             Text(l("恶魔","Devil") + " →")
         }.font(.system(size:11)).foregroundColor(Color(hex:0x6e5964)).padding(.horizontal,26).frame(width:width).opacity(show ? 0.68:0).offset(y:show ? 0:4).position(x:width/2,y:height-bottom-94.5).allowsHitTesting(false)
     }
+    func replyBadge(_ count: Int) -> some View {
+        Text(count > 99 ? "99+" : String(count))
+            .font(.system(size:10,weight:.bold)).foregroundColor(.white)
+            .padding(.horizontal,4).frame(minWidth:17,minHeight:17)
+            .background(Color(hex:0xb63d51),in:Capsule())
+            .accessibilityLabel(l("\(count) 条未读回复","\(count) unread replies"))
+    }
+
     func navItem(_ title:String,icon:String,active:Bool,action:@escaping ()->Void)->some View {
         let post = icon == "plus"
         let kind:NavGlyph.Kind = post ? .plus : icon == "person" ? .person : .house
@@ -876,6 +904,11 @@ struct ContentView: View {
                     RoundedRectangle(cornerRadius: post ? 11:12).fill(post ? Color(hex:0xdf9b90) : active ? Color(hex:0xf6e5e2) : Color.clear)
                     NavGlyph(kind:kind).stroke(post ? Color.white:color, style:StrokeStyle(lineWidth:post ? 2*22/24:1.8*21/24,lineCap:.round,lineJoin:.round)).frame(width:post ? 22:21,height:post ? 22:21)
                 }.frame(width:post ? 36:31,height:post ? 25:24)
+                    .overlay(alignment:.topTrailing) {
+                        if icon == "person", unreadReplyCount > 0 {
+                            replyBadge(unreadReplyCount).offset(x:8,y:-4)
+                        }
+                    }
                 Text(title).font(.system(size:11,weight:.semibold)).foregroundColor(color)
             }.frame(maxWidth:.infinity,minHeight:48)
         }
