@@ -26,10 +26,19 @@ struct NativeStory: Codable, Identifiable {
         return Int(min(24,max(0,ceil(remaining))))
     }
 }
+struct NativeReportDetails: Codable {
+    var content: String?
+    var camp: String?
+    var createdAt: Date?
+    var acceptanceStatus: String?
+    var result: String?
+}
+
 struct NativeLocalState: Codable {
     var localStories: [NativeStory] = []
     var snapshots: [NativeStory] = []
     var reports: [String] = []
+    var reportDetails: [String: NativeReportDetails]? = nil
     var hidden: [String] = []
     var liked: [String: Bool] = [:]
     var best: [String: String] = [:]

@@ -67,6 +67,8 @@ struct ContentView: View {
     @State var writeFieldFocused = false
     @State var snapshots: [NativeStory] = []
     @State var reports: [String] = []
+    @State var selectedReport: String?
+    @State var reportOrigin: CGRect?
     @State var hidden: [String] = []
     @State var liked: [String:Bool] = [:]
     @State var best: [String:String] = [:]
@@ -151,8 +153,9 @@ struct ContentView: View {
                         .zIndex(10).transition(pageTransition("profile"))
                 }
                 if let page = utility, page != "profile" {
-                    utilityPage(page,width:w,height:h,top:top,bottom:bottom).id(page).zIndex(page == "report" ? 30 : (companionMode == .library ? 11 : 10)).transition(pageTransition(page))
+                    utilityPage(page,width:w,height:h,top:top,bottom:bottom).accessibilityHidden(selectedReport != nil).id(page).zIndex(page == "report" ? 30 : (companionMode == .library ? 11 : 10)).transition(pageTransition(page))
                 }
+                if let record = selectedReport { reportDetailCard(record,width:w,height:h,top:top,bottom:bottom).zIndex(29) }
                 if let answer = selectedReply { replyOverlay(answer,width:w,height:h,top:top,bottom:bottom).zIndex(29) }
                 if let story = detailStory {
                     detailPage(story,width:w,height:h,top:top,bottom:bottom)
@@ -290,6 +293,7 @@ struct ContentView: View {
             transitionRevision += 1
             axis = nil; settling = false; verticalTarget = nil; verticalProgress = 0; edgeOffset = 0
         }
+        selectedReport = nil
         snapshots=[];reports=[];hidden=[];liked=[:];best=[:];updates=[:];reviewed=[]
         restoreLocal()
         let restoredIndex = previousStory.flatMap { id in model.stories.firstIndex { $0.id == id } }

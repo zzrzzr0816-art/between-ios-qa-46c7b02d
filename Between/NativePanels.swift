@@ -295,8 +295,11 @@ extension ContentView {
         withAnimation(transitionAnimation){utility=nil}
         toast(l("已屏蔽这条烦恼","Story hidden"))
     }
+    var reportReasons: [(String,String)] {
+        [(l("骚扰或攻击","Harassment or abuse"),"harassment"),(l("仇恨或歧视","Hate or discrimination"),"hate"),(l("涉及人身安全","Safety concern"),"safety"),(l("泄露隐私","Privacy violation"),"privacy"),(l("垃圾信息或其他","Spam or other"),"spam")]
+    }
     func reportPage(width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
-        let reasons = [(l("骚扰或攻击","Harassment or abuse"),"harassment"),(l("仇恨或歧视","Hate or discrimination"),"hate"),(l("涉及人身安全","Safety concern"),"safety"),(l("泄露隐私","Privacy violation"),"privacy"),(l("垃圾信息或其他","Spam or other"),"spam")]
+
         return VStack(alignment:.leading,spacing:0){
             HStack(spacing:10){
                 Button {closeReport()} label:{Text("‹").font(.system(size:32,weight:.light)).foregroundColor(Color(hex:0x75666d)).frame(width:44,height:44)}.accessibilityLabel(l("返回","Back"))
@@ -305,7 +308,7 @@ extension ContentView {
             }.padding(.horizontal,16).padding(.top,top+12).padding(.bottom,10)
             Text(reportType=="answer" ? l("正在举报一条建议","Reporting a response") : reportType=="reply" ? l("正在举报一条回复","Reporting a reply") : l("正在举报这条烦恼","Reporting this story")).font(.system(size:11)).foregroundColor(Color(hex:0xa29490)).padding(.horizontal,20).padding(.bottom,10)
             VStack(spacing:10){
-                ForEach(Array(reasons.enumerated()),id:\.offset){ _,reason in
+                ForEach(Array(reportReasons.enumerated()),id:\.offset){ _,reason in
                     Button {reportReason=reason.1} label:{
                         HStack{
                             Text(reason.0).font(.system(size:14)).foregroundColor(Color(hex:0x59484b))
@@ -364,6 +367,13 @@ extension ContentView {
         guard requireLogin("report") else{return}
         let raw=[sid,reportType,reportId,reportReason].joined(separator:"|")
         if !reports.contains(raw){reports.append(raw)}
+        if localState.reportDetails?[raw] == nil {
+            var details = localState.reportDetails ?? [:]
+            var record = reportDetails(raw)
+            record.createdAt = Date()
+            details[raw] = record
+            localState.reportDetails = details
+        }
         let blocked = reportAlsoBlock ? reportAuthorID : nil
         if let blocked {
             localState.blockedAuthorIDs = (localState.blockedAuthorIDs ?? []).union([blocked])
@@ -725,14 +735,10 @@ extension ContentView {
         if page=="profile-stories" { for story in model.stories where story.id.hasPrefix("local-") { items.append((story.text,l("24 小时后消失","Expires in 24 hours"),story,nil)) } }
         if page=="saved" { for story in snapshots.compactMap({ localState.filteringBlockedAuthors(in:$0) }) { items.append((story.text,l("快照 · 只读","Snapshot · read only"),story,nil)) } }
         if page=="activity" {
-            for raw in reports {
-                let parts=raw.split(separator:"|").map(String.init)
-                let sid=parts.first ?? raw
-                let type=parts.count>1 ? parts[1]:"story"
-                let story=model.stories.first{$0.id==sid}
-                let typeLabel = type=="answer" ? l("建议","response") : type=="reply" ? l("回复","reply") : l("烦恼","story")
-                let status = reviewed.contains(raw) ? l("已查看","Reviewed") : l("未查看","Unread")
-                items.append((story?.text ?? l("已移除的烦恼","A removed story"),"\(status) · \(typeLabel)",story,raw))
+            for raw in reports.reversed() {
+                let details = reportDetails(raw)
+                items.append((details.content ?? l("内容已不可用","Content unavailable"),
+                              reportStatus(details) + " · " + reportTypeLabel(raw),nil,raw))
             }
         }
         return VStack(alignment:.leading,spacing:0){
@@ -762,7 +768,7 @@ extension ContentView {
                             Text(item.1).font(.system(size:12)).foregroundColor(Color(hex:0x9b8d8b)).lineLimit(2)
                         }.padding(15).frame(maxWidth:.infinity,alignment:.leading).background(.white,in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xf0e9e7),lineWidth:1))
                             .background {
-                                if page == "saved", item.2 != nil {
+                                if (page == "saved" && item.2 != nil) || page == "activity" {
                                     GeometryReader { proxy in
                                         Color.clear.preference(key:CardFrames.self,
                                                                value:[frameKey:proxy.frame(in:.named("card-stage"))])
@@ -781,7 +787,11 @@ extension ContentView {
                                     guard let story = item.2, let answer = story.answers.first(where: { $0.id == item.3 }) else { return }
                                     discussionID = story.id
                                     openReply(answer)
-                                case "activity": if let key=item.3 {if reviewed.contains(key){reviewed.removeAll{$0==key}}else{reviewed.append(key)};persistLocal()}
+                                case "activity":
+                                    if let key = item.3 {
+                                        reportOrigin = cardFrames[frameKey]
+                                        withAnimation(transitionAnimation) { selectedReport = key }
+                                    }
                                 default: if let story=item.2 {openDetail(story)}
                                 }
                             }
@@ -789,6 +799,88 @@ extension ContentView {
                 }.padding(.horizontal,20).padding(.bottom,bottom+H5Design.navigationHeight+12)
             }
         }.frame(width:width,height:height).background(Color(hex:0xfffaf8))
+    }
+
+    private func reportParts(_ key: String) -> [String] {
+        key.split(separator:"|",omittingEmptySubsequences:false).map(String.init)
+    }
+    private func reportTypeLabel(_ key: String) -> String {
+        switch reportParts(key).dropFirst().first {
+        case "answer": return l("建议","Response")
+        case "reply": return l("回复","Reply")
+        default: return l("烦恼","Story")
+        }
+    }
+    private func reportDetails(_ key: String) -> NativeReportDetails {
+        if let stored = localState.reportDetails?[key] { return stored }
+        let parts = reportParts(key)
+        guard parts.count >= 3, let story = model.stories.first(where: { $0.id == parts[0] })
+                ?? model.sourceStories.first(where: { $0.id == parts[0] }) else { return NativeReportDetails() }
+        switch parts[1] {
+        case "answer":
+            let answer = story.answers.first { $0.id == parts[2] }
+            return NativeReportDetails(content:answer?.text,camp:answer?.side)
+        case "reply":
+            for answer in story.answers {
+                if let reply = answer.replies.first(where: { $0.id == parts[2] }) {
+                    return NativeReportDetails(content:reply.text,camp:answer.side)
+                }
+            }
+            return NativeReportDetails()
+        default:
+            return NativeReportDetails(content:story.text)
+        }
+    }
+    private func reportStatus(_ record: NativeReportDetails) -> String {
+        record.acceptanceStatus ?? l("仅保存在本机，未送审","Saved on this device · not submitted")
+    }
+    func reportDetailCard(_ key: String,width: CGFloat,height: CGFloat,top: CGFloat,bottom: CGFloat) -> some View {
+        let record = reportDetails(key)
+        let reasonCode = reportParts(key).dropFirst(3).first
+        let reason = reportReasons.first { $0.1 == reasonCode }?.0 ?? l("未记录","Not recorded")
+        let direction = record.camp == "angel" ? l("天使阵营","Angel")
+            : record.camp == "devil" ? l("恶魔阵营","Devil") : l("未记录","Not recorded")
+        let available = max(1,height-top-bottom-32)
+        let cardHeight = min(520,available)
+        let cardWidth = max(1,min(420,width-36))
+        let target = CGRect(x:(width-cardWidth)/2,y:top+16+(available-cardHeight)/2,width:cardWidth,height:cardHeight)
+        return ZStack(alignment:.topLeading) {
+            Color.black.opacity(0.18).onTapGesture { withAnimation(transitionAnimation) { selectedReport = nil } }
+                .accessibilityHidden(true)
+            VStack(alignment:.leading,spacing:14) {
+                HStack {
+                    Text(l("举报详情","Report details")).font(.system(size:20,weight:.bold))
+                    Spacer()
+                    Button { withAnimation(transitionAnimation) { selectedReport = nil } } label: {
+                        Image(systemName:"xmark").font(.system(size:14,weight:.semibold)).frame(width:44,height:44)
+                    }.accessibilityLabel(l("关闭举报详情","Close report details"))
+                }
+                ScrollView {
+                    VStack(alignment:.leading,spacing:16) {
+                        reportField(l("受理状态","Review status"),reportStatus(record))
+                        reportField(l("举报对象","Target"),reportTypeLabel(key))
+                        if record.camp != nil { reportField(l("阵营","Camp"),direction) }
+                        reportField(l("举报原因","Reason"),reason)
+                        reportField(l("被举报内容","Reported content"),record.content ?? l("内容已不可用","Content unavailable"))
+                        if let date = record.createdAt {
+                            reportField(l("记录时间","Recorded"),date.formatted(date:.abbreviated,time:.shortened))
+                        }
+                        reportField(l("处理结果","Outcome"),record.result ?? l("暂无处理结果","No outcome available"))
+                    }.frame(maxWidth:.infinity,alignment:.leading)
+                }
+            }.padding(20)
+                .frame(width:cardWidth,height:cardHeight)
+                .background(replyCardSurface,in:RoundedRectangle(cornerRadius:20))
+                .overlay(RoundedRectangle(cornerRadius:20).strokeBorder(replyCardBorder,lineWidth:1))
+                .position(x:target.midX,y:target.midY)
+        }.frame(width:width,height:height)
+            .transition(replyReveal(from:reportOrigin,to:target))
+    }
+    private func reportField(_ label: String,_ value: String) -> some View {
+        VStack(alignment:.leading,spacing:5) {
+            Text(label).font(.system(size:12,weight:.semibold)).foregroundColor(H5Design.muted)
+            Text(value).font(.system(size:15)).fixedSize(horizontal:false,vertical:true)
+        }
     }
 
     func openReply(_ answer: NativeAnswer) {
