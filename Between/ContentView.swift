@@ -17,6 +17,9 @@ struct ContentView: View {
     @State var axis: PageDrag?
     @State var verticalTarget: String?
     @State private var pendingFeedRefresh = false
+    @State var serverWriteInFlight = false
+    var usesLiveFeed: Bool { !model.preview && !showingTestStories }
+    var serverViewer: String { auth.userId ?? "guest" }
     @State private var testStoriesCreated: Double?
     var showingTestStories: Bool { testStoriesCreated != nil }
     @State private var transitionRevision = 0
@@ -203,7 +206,7 @@ struct ContentView: View {
                 #endif
                 let initialLanguage = language
                 restoreLocal()
-                await model.load(initialLanguage)
+                await model.load(initialLanguage,viewer:serverViewer)
                 rebuildVisibleStories()
                 applyPreviewRoute()
                 resetIdleHints()
@@ -212,7 +215,14 @@ struct ContentView: View {
             .task { await auth.bootstrap() }
             .onChange(of: scenePhase) { phase in
                 if phase == .active {
-                    Task { await auth.bootstrap() }
+                    Task { await auth.bootstrap(); await refreshServerFeed() }
+                }
+            }
+            .task(id:scenePhase) {
+                guard scenePhase == .active else { return }
+                while !Task.isCancelled {
+                    do { try await Task.sleep(nanoseconds:20_000_000_000) } catch { return }
+                    await refreshServerFeed()
                 }
             }
             .onDisappear {
@@ -225,6 +235,7 @@ struct ContentView: View {
                 if auth.account != nil {withAnimation(transitionAnimation){loginPrompt=nil}}
                 nicknameDraft=auth.account?.nickname ?? ""
                 nicknameError=nil
+                if usesLiveFeed { Task { await refreshServerFeed() } }
             }
             .onChange(of: axis) { _ in applyPendingFeedRefresh() }
             .onChange(of: feedDragging) { active in
@@ -324,6 +335,49 @@ struct ContentView: View {
             if utility == "report" { closeReport() }
         }
     }
+    @discardableResult
+    func refreshServerFeed() async -> Bool {
+        guard usesLiveFeed, !model.loading, !model.loadingMore else { return false }
+        let viewer = serverViewer
+        let requested = language
+        guard await model.refresh(requested,viewer:viewer),
+              viewer == serverViewer, requested == language else { return false }
+        pendingFeedRefresh = true
+        applyPendingFeedRefresh()
+        return true
+    }
+
+    func writeToServer(_ path: String, fields: [String:String],
+                       onSuccess: @escaping (NativeFeedModel.MutationResult) -> Void) {
+        guard !serverWriteInFlight else { return }
+        serverWriteInFlight = true
+        let viewer = serverViewer
+        Task {
+            defer { serverWriteInFlight = false }
+            do {
+                let result = try await model.mutate(path,fields:fields,viewer:viewer)
+                guard viewer == serverViewer else { return }
+                onSuccess(result)
+                if !(await refreshServerFeed()) {
+                    toast(l("服务器已保存，列表稍后刷新","Saved on the server. The list will refresh shortly."))
+                }
+            } catch let error as NativeFeedModel.MutationFailure {
+                guard viewer == serverViewer else { return }
+                switch error.status {
+                case 404: toast(l("内容已到期或被移除","This content expired or was removed"))
+                case 422: toast(l("内容未通过审核，未发布","This content did not pass moderation"))
+                case 429: toast(l("操作太频繁，请稍后再试","Too many requests. Try again later."))
+                case 503: toast(l("审核暂时不可用，未发布","Moderation is unavailable. Nothing was posted."))
+                default: toast(l("服务器拒绝了这次操作","The server rejected this action"))
+                }
+            } catch {
+                guard viewer == serverViewer else { return }
+                toast(l("未能确认结果，请先刷新查看","Couldn’t confirm the result. Check the list before retrying."))
+                await refreshServerFeed()
+            }
+        }
+    }
+
     func loadNextStories() async {
         if !showingTestStories, await model.loadNext() {
             pendingFeedRefresh = true
@@ -372,6 +426,10 @@ struct ContentView: View {
             composer = ""; replyText = ""; selectedReply = nil
             composerFocused = false; replyFocused = false
         }
+        if let reply = selectedReply {
+            selectedReply = discussionStory?.answers.first { $0.id == reply.id }
+            if selectedReply == nil { replyFocused = false; replyText = "" }
+        }
         if let detail = detailStory {
             detailStory = visible.first { $0.id == detail.id }
         }
@@ -401,7 +459,7 @@ struct ContentView: View {
                     language = requested
                     if showingTestStories { rebuildVisibleStories(); return }
                     Task {
-                        if await model.load(requested) {
+                        if await model.load(requested,viewer:serverViewer) {
                             rebuildVisibleStories()
                         } else {
                             toast(l("语言切换失败，请重试","Couldn’t switch languages. Try again."))
@@ -445,7 +503,7 @@ struct ContentView: View {
                         .font(.system(size:24,weight:.bold))
                     if model.loadingMore { ProgressView().tint(H5Design.muted) }
                     else if model.error {
-                        Button(l("重试","Retry")) { Task { if await model.load(language) { rebuildVisibleStories() } } }
+                        Button(l("重试","Retry")) { Task { if await model.load(language,viewer:serverViewer) { rebuildVisibleStories() } } }
                     } else if model.nextOffset != nil {
                         Button(model.pageError ? l("重试加载","Retry loading") : l("继续加载","Load more")) { Task { await loadNextStories() } }
                     }

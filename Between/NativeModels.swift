@@ -11,6 +11,7 @@ struct NativeAnswer: Codable, Identifiable {
     var authorID: String? = nil
     var publicAuthorID: String? = nil
     var mine: Bool? = nil
+    var liked: Bool? = nil
 }
 struct NativeStory: Codable, Identifiable {
     let id: String
@@ -242,6 +243,7 @@ enum NativeCamp: String {
     @Published var pageError = false
     private(set) var loadedLanguage: String?
     private var revision = 0
+    private var loadedViewer = "guest"
     private let session: URLSession
     private let apiBase: String
 
@@ -251,10 +253,12 @@ enum NativeCamp: String {
     }
     private(set) var sourceStories: [NativeStory] = []
     var current: NativeStory? { stories.indices.contains(index) ? stories[index] : nil }
-    var preview: Bool { BetweenPreviewMode.enabled }
+    var preview: Bool { BetweenPreviewMode.enabled && !BetweenPreviewMode.live }
+    private var deviceMarkers: [String: String] = [:]
     @discardableResult
-    func load(_ language: String) async -> Bool {
+    func load(_ language: String, viewer: String = "guest") async -> Bool {
         revision += 1; let version = revision
+        loadedViewer = viewer
         loadingMore = false
         pageError = false
         if preview {
@@ -272,7 +276,7 @@ enum NativeCamp: String {
         loading = true; error = false
         defer { if version == revision { loading = false } }
         do {
-            let result = try await fetchPage(language:language,offset:0)
+            let result = try await fetchPage(language:language,offset:0,viewer:viewer)
             guard version == revision, !Task.isCancelled else { return false }
             var ids = Set<String>()
             sourceStories = result.stories.filter { story in
@@ -286,8 +290,38 @@ enum NativeCamp: String {
             return false
         }
     }
+    private var refreshing = false
+
+    func refresh(_ language: String, viewer: String) async -> Bool {
+        guard !preview, !loading, !loadingMore, !refreshing else { return false }
+        refreshing = true
+        defer { refreshing = false }
+        let version = revision
+        do {
+            let pages = max(1,(sourceStories.count+99)/100)
+            var offset = 0
+            var seen = Set<String>()
+            var updated: [NativeStory] = []
+            var next: Int?
+            for _ in 0..<pages {
+                let page = try await fetchPage(language:language,offset:offset,viewer:viewer)
+                guard version == revision, !Task.isCancelled else { return false }
+                updated += page.stories.filter { $0.hoursRemaining() > 0 && !$0.id.isEmpty && seen.insert($0.id).inserted }
+                next = page.next_offset.flatMap { $0 > offset ? $0 : nil }
+                guard let next else { break }
+                offset = next
+            }
+            sourceStories = updated
+            loadedLanguage = language
+            loadedViewer = viewer
+            nextOffset = next
+            error = false
+            return true
+        } catch { return false }
+    }
+
     func loadNext() async -> Bool {
-        guard !preview, let offset = nextOffset, let language = loadedLanguage, !loadingMore, !loading else { return false }
+        guard !preview, !refreshing, let offset = nextOffset, let language = loadedLanguage, !loadingMore, !loading else { return false }
         let version = revision
         loadingMore = true
         pageError = false
@@ -296,7 +330,7 @@ enum NativeCamp: String {
             var cursor = offset
             var seen = Set(sourceStories.map(\.id))
             for _ in 0..<5 {
-                let result = try await fetchPage(language:language,offset:cursor)
+                let result = try await fetchPage(language:language,offset:cursor,viewer:loadedViewer)
                 guard version == revision, !Task.isCancelled else { return false }
                 let next = result.next_offset.flatMap { $0 > cursor ? $0 : nil }
                 let additions = result.stories.filter { story in
@@ -317,17 +351,64 @@ enum NativeCamp: String {
         }
     }
 
-    private func fetchPage(language: String, offset: Int) async throws -> NativeFeed {
+    private func fetchPage(language: String, offset: Int, viewer: String) async throws -> NativeFeed {
         guard let base = URL(string:apiBase), base.host != nil,
               var url = URLComponents(url:base.appendingPathComponent("stories"),resolvingAgainstBaseURL:false) else {
             throw URLError(.badURL)
         }
         url.queryItems = [URLQueryItem(name:"language",value:language),URLQueryItem(name:"scope",value:"feed"),URLQueryItem(name:"offset",value:String(offset))]
         guard let endpoint = url.url else { throw URLError(.badURL) }
-        let request = URLRequest(url:endpoint,cachePolicy:.reloadIgnoringLocalCacheData,timeoutInterval:15)
+        var request = URLRequest(url:endpoint,cachePolicy:.reloadIgnoringLocalCacheData,timeoutInterval:15)
+        request.setValue(deviceMarker(viewer),forHTTPHeaderField:"X-Between-Device")
+        request.httpShouldHandleCookies = false
         let (data,response) = try await session.data(for:request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
         return try JSONDecoder().decode(NativeFeed.self,from:data)
+    }
+
+    private func deviceMarker(_ viewer: String) -> String {
+        if let cached = deviceMarkers[viewer] { return cached }
+        let key = "native.server-device.v1." + viewer
+        let defaults = UserDefaults.standard
+        if let saved = defaults.string(forKey:key), saved.count == 43 {
+            deviceMarkers[viewer] = saved
+            return saved
+        }
+        var first = UUID().uuid
+        var second = UUID().uuid
+        var bytes = withUnsafeBytes(of:&first) { Data($0) }
+        bytes.append(withUnsafeBytes(of:&second) { Data($0) })
+        let marker = bytes.base64EncodedString().replacingOccurrences(of:"+",with:"-")
+            .replacingOccurrences(of:"/",with:"_").replacingOccurrences(of:"=",with:"")
+        defaults.set(marker,forKey:key)
+        deviceMarkers[viewer] = marker
+        return marker
+    }
+
+    struct MutationResult: Decodable {
+        let ok: Bool
+        let id: String
+        let pending: Bool?
+    }
+
+    struct MutationFailure: Error {
+        let status: Int
+    }
+
+    func mutate(_ path: String, fields: [String:String], viewer: String) async throws -> MutationResult {
+        guard let base = URL(string:apiBase), base.host != nil else { throw URLError(.badURL) }
+        var request = URLRequest(url:base.appendingPathComponent(path),timeoutInterval:25)
+        request.httpMethod = "POST"
+        request.httpShouldHandleCookies = false
+        request.setValue("application/json",forHTTPHeaderField:"Content-Type")
+        request.setValue(deviceMarker(viewer),forHTTPHeaderField:"X-Between-Device")
+        request.httpBody = try JSONEncoder().encode(fields)
+        let (data,response) = try await session.data(for:request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else { throw MutationFailure(status:status) }
+        let result = try JSONDecoder().decode(MutationResult.self,from:data)
+        guard result.ok else { throw MutationFailure(status:status) }
+        return result
     }
 
     static func fixtures(_ language:String,created:Double = Date().timeIntervalSince1970*1000) -> [NativeStory] {
@@ -366,6 +447,14 @@ enum NativeCamp: String {
 }
 
 enum BetweenPreviewMode {
+    static var live: Bool {
+        #if BETWEEN_LIVE_PLAYTEST
+        return true
+        #else
+        return false
+        #endif
+    }
+
     static var device: Bool {
         #if BETWEEN_DEVICE_PREVIEW
         return true
@@ -375,7 +464,7 @@ enum BetweenPreviewMode {
     }
 
     static var enabled: Bool {
-        #if BETWEEN_DEVICE_PREVIEW
+        #if BETWEEN_DEVICE_PREVIEW || BETWEEN_LIVE_PLAYTEST
         return true
         #elseif DEBUG
         return ProcessInfo.processInfo.arguments.contains("-preview-fixture")

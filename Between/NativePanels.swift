@@ -84,7 +84,9 @@ extension ContentView {
         let sid = discussionID ?? ""
         let mine = sid.hasPrefix("local-")
         let isBest = best["\(sid)|\(answer.side)"] == answer.id
-        let isLiked = liked[answer.id] ?? false
+        let online = usesLiveFeed && !sid.hasPrefix("local-")
+            && model.sourceStories.contains { $0.id == sid && $0.answers.contains { $0.id == answer.id } }
+        let isLiked = online ? answer.liked == true : liked[answer.id] == true
         return VStack(alignment:.leading,spacing:0){
             HStack{
                 Text(answer.author).font(.system(size:12,weight:.bold)).foregroundColor(Color(hex:0x9a8888))
@@ -97,6 +99,10 @@ extension ContentView {
             HStack(spacing:8){
                 Button {
                     guard requireLogin("like") else{return}
+                    if online {
+                        writeToServer("like",fields:["id":answer.id]) { _ in }
+                        return
+                    }
                     let next = !isLiked
                     if let story = discussionStory {
                         rememberExpiry(of: story)
@@ -107,7 +113,7 @@ extension ContentView {
                     liked[answer.id]=next;persistLocal()
                 } label:{
                     HStack(spacing:5){Image(systemName:isLiked ? "heart.fill":"heart").font(.system(size:15,weight:.light))
-                            .id(isLiked).transition(.scale(scale:0.82).combined(with:.opacity));Text("\(min(max(0,answer.likes),Int.max-1) + (isLiked ? 1:0))").font(.system(size:12))}
+                            .id(isLiked).transition(.scale(scale:0.82).combined(with:.opacity));Text("\(min(max(0,answer.likes),Int.max-1) + (!online && isLiked ? 1:0))").font(.system(size:12))}
                         .foregroundColor(isLiked ? Color(hex:0xb85657):Color(hex:0x897a7a)).padding(.horizontal,11).frame(height:38)
                         .background(Color(hex:isLiked ? 0xf9e6e2:0xf8f4f2),in:Capsule()).animation(reduceMotion || !motionOn ? nil : .easeInOut(duration:0.19),value:isLiked)
                 }.buttonStyle(PressScale())
@@ -158,6 +164,16 @@ extension ContentView {
         guard text.count<=1000 else{toast(l("最多输入 1000 字","Limit: 1,000 characters"));return}
         guard camp == chosen, let story = discussionStory,
               story.created/1000+86400 > Date().timeIntervalSince1970 else { return }
+        if usesLiveFeed && !story.id.hasPrefix("local-") {
+            let draft = composer
+            writeToServer("answers",fields:["storyId":story.id,"side":chosen.rawValue,"text":text]) { _ in
+                if discussionID == story.id, camp == chosen, composer == draft {
+                    composer = ""; composerFocused = false
+                }
+                toast(l("建议已发布","Response posted"))
+            }
+            return
+        }
         let answer = NativeAnswer(id:UUID().uuidString,author:myName,side:chosen.rawValue,text:text,likes:0,replies:[])
         localState.myAnswers[story.id,default:[]].append(answer)
         localState.answerOwnership = (localState.answerOwnership ?? []).union([answer.id])
@@ -234,6 +250,17 @@ extension ContentView {
         guard !text.isEmpty else{toast(l("请先写点内容","Write something first"));return}
         guard text.count <= 1500 else { toast(l("最多输入 1500 字","Limit: 1,500 characters")); return }
         guard requireLogin("publish") else{return}
+        if usesLiveFeed {
+            let draft = writeText
+            writeToServer("stories",fields:["language":language,"category":"other","text":text]) { result in
+                if utility == "write", writeText == draft {
+                    writeText = ""; writeFieldFocused = false
+                    withAnimation(transitionAnimation) { utility = nil }
+                }
+                toast(result.pending == true ? l("已提交，审核后可见","Submitted for review") : l("烦恼已发布","Story posted"))
+            }
+            return
+        }
         localState.localStories.insert(NativeStory(id:"local-\(UUID().uuidString)",text:text,created:Date().timeIntervalSince1970*1000,answers:[]),at:0)
         rebuildVisibleStories()
         model.index=0;writeText="";writeFieldFocused=false;persistLocal();withAnimation(transitionAnimation){utility=nil}
@@ -427,6 +454,17 @@ extension ContentView {
         guard !text.isEmpty,requireLogin("reply") else{return}
         guard let story = discussionStory, story.created/1000+86400 > Date().timeIntervalSince1970,
               story.answers.contains(where: { $0.id == answer.id }) else { return }
+        guard text.count <= 1000 else { toast(l("最多输入 1000 字","Limit: 1,000 characters")); return }
+        if usesLiveFeed && model.sourceStories.contains(where: { $0.id == story.id && $0.answers.contains { $0.id == answer.id } }) {
+            let draft = replyText
+            writeToServer("replies",fields:["answerId":answer.id,"text":text]) { _ in
+                if discussionID == story.id, selectedReply?.id == answer.id, replyText == draft {
+                    replyText = ""; replyFocused = false
+                }
+                toast(l("回复已发布","Reply posted"))
+            }
+            return
+        }
         let id = UUID().uuidString
         localState.replies[answer.id,default:[]].append(NativeReply(id:id,author:myName,text:text))
         localState.replyOwnership = (localState.replyOwnership ?? []).union([id])
@@ -527,7 +565,7 @@ extension ContentView {
                 VStack(alignment:.leading,spacing:0){
                     accountSection.padding(.top,8)
                     LazyVGrid(columns:columns,spacing:10){
-                        Button {openUtility("profile-stories")} label:{profileTile("✎",iconBG:0xfae7e2,iconColor:0xbe7770,label:l("我的烦恼","My stories"),count:model.stories.filter{$0.id.hasPrefix("local-")}.count)}
+                        Button {openUtility("profile-stories")} label:{profileTile("✎",iconBG:0xfae7e2,iconColor:0xbe7770,label:l("我的烦恼","My stories"),count:model.stories.filter{$0.id.hasPrefix("local-") || $0.mine == true}.count)}
                         Button {openUtility("profile-answers")} label:{profileTile("✧",iconBG:0xe7f1f6,iconColor:0x789fb2,label:l("我的建议","My responses"),count:answers,unread:unreadReplyCount)}
                         Button {openUtility("saved")} label:{profileTile("♡",iconBG:0xfaeee6,iconColor:0xc58c78,label:l("收藏","Saved"),count:snapshots.count)}
                         Button {openUtility("activity")} label:{profileTile("◌",iconBG:0xefecf3,iconColor:0xa096b0,label:l("举报记录","Report history"),count:reports.isEmpty ? nil:reports.count)}
@@ -732,7 +770,7 @@ extension ContentView {
         }
         var items:[(String,String,NativeStory?,String?)] = []
         if page=="profile-answers" { for story in model.stories { for answer in story.answers where owned.contains(answer.id) { items.append((answer.text,story.text,story,answer.id)) } } }
-        if page=="profile-stories" { for story in model.stories where story.id.hasPrefix("local-") { items.append((story.text,l("24 小时后消失","Expires in 24 hours"),story,nil)) } }
+        if page=="profile-stories" { for story in model.stories where story.id.hasPrefix("local-") || story.mine == true { items.append((story.text,l("24 小时后消失","Expires in 24 hours"),story,nil)) } }
         if page=="saved" { for story in snapshots.compactMap({ localState.filteringBlockedAuthors(in:$0) }) { items.append((story.text,l("快照 · 只读","Snapshot · read only"),story,nil)) } }
         if page=="activity" {
             for raw in reports.reversed() {

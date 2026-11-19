@@ -3,6 +3,9 @@ name: Device IPA
 on:
   workflow_dispatch:
     inputs:
+      live_sync:
+        type: boolean
+        default: false
       preview_login:
         type: boolean
         default: false
@@ -18,10 +21,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build unsigned device app
         env:
+          LIVE_SYNC: ${{ inputs.live_sync }}
           PREVIEW_LOGIN: ${{ inputs.preview_login }}
         run: |
           settings=()
-          if [[ "$PREVIEW_LOGIN" == "true" ]]; then
+          if [[ "$LIVE_SYNC" == "true" ]]; then
+            settings+=(SWIFT_ACTIVE_COMPILATION_CONDITIONS=BETWEEN_LIVE_PLAYTEST PRODUCT_BUNDLE_IDENTIFIER=com.example.between.livetest "INFOPLIST_KEY_CFBundleDisplayName=Between Live Test" CURRENT_PROJECT_VERSION=15)
+          elif [[ "$PREVIEW_LOGIN" == "true" ]]; then
             settings+=(SWIFT_ACTIVE_COMPILATION_CONDITIONS=BETWEEN_DEVICE_PREVIEW PRODUCT_BUNDLE_IDENTIFIER=com.example.between.playtest "INFOPLIST_KEY_CFBundleDisplayName=Between Test" CURRENT_PROJECT_VERSION=14)
           fi
           xcodebuild -project Between.xcodeproj -target Between -configuration Release -sdk iphoneos -arch arm64 CONFIGURATION_BUILD_DIR="$RUNNER_TEMP/device-build" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO "${settings[@]}" build > "$RUNNER_TEMP/device-build.log" 2>&1 || { cat "$RUNNER_TEMP/device-build.log"; exit 1; }
