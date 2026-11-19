@@ -40,14 +40,21 @@ let recording: ReturnType<typeof spawn> | undefined;
 let recordingFinished: Promise<void> | undefined;
 try {
   simctl('install', sim.udid, app);
-  simctl('launch', '--terminate-running-process', sim.udid, bundle,
-    '-preview-fixture', '-ui-verify-companions');
   recording = spawn('xcrun', ['simctl', 'io', sim.udid, 'recordVideo', '--codec=h264',
     join(evidence, 'between-interactions.mp4')], { stdio: 'inherit' });
   recordingFinished = new Promise(resolve => {
     recording!.once('close', () => resolve());
     recording!.once('error', error => { console.warn(error); resolve(); });
   });
+
+  const launch = () => simctl('launch', '--terminate-running-process', sim.udid, bundle,
+    '-preview-fixture', '-ui-verify-companions');
+  try { launch(); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ETIMEDOUT') throw error;
+    console.warn('Simulator launch timed out; retrying once');
+    launch();
+  }
 
   const waitFor = async (step: string, check: (labels: Set<string>) => boolean) => {
     const deadline = Date.now() + 25_000;
