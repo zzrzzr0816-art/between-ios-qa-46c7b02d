@@ -48,7 +48,6 @@ struct ContentView: View {
     @State var reportAuthorID: String?
     @State var reportAlsoBlock = false
     @State var reportUsesServer = false
-    @State var confirmingUnblockAll = false
 
     func unreadReplyIDs(in answer: NativeAnswer) -> Set<String> {
         guard answer.mine == true || localState.answerOwnership?.contains(answer.id) == true else { return [] }

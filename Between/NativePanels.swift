@@ -904,18 +904,10 @@ extension ContentView {
                     }
                 }.padding(.bottom,12)
             }
-            if !records.isEmpty || !legacy.isEmpty {
-                Button(l("解除全部拉黑","Unblock everyone")) { confirmingUnblockAll = true }
-                    .font(.system(size:14,weight:.semibold)).foregroundColor(Color(hex:0xb05e61))
-                    .frame(maxWidth:.infinity,minHeight:44).disabled(serverWriteInFlight)
-            }
         }.padding(.horizontal,20).padding(.top,top+8).padding(.bottom,bottom+H5Design.navigationHeight+12)
             .frame(width:width,height:height,alignment:.top)
             .background(Color(hex:0xfffaf8))
-            .confirmationDialog(l("解除全部拉黑？","Unblock everyone?"),isPresented:$confirmingUnblockAll,titleVisibility:.visible) {
-                Button(l("解除全部","Unblock all"),role:.destructive) { unblockAll() }
-                Button(l("取消","Cancel"),role:.cancel) {}
-            }
+
     }
 
     private func blockedRow(_ name: String,subtitle: String) -> some View {
@@ -924,22 +916,6 @@ extension ContentView {
             Text(subtitle).font(.system(size:12)).foregroundColor(H5Design.muted)
         }.padding(14).frame(maxWidth:.infinity,alignment:.leading)
             .background(.white,in:RoundedRectangle(cornerRadius:15))
-    }
-
-    private func unblockAll() {
-        let remote = localState.blockedRecords?.contains { $0.server } == true
-        func clear() {
-            localState.blockedRecords = nil
-            localState.blockedAuthorIDs = nil
-            rebuildVisibleStories()
-            persistLocal()
-            toast(l("已解除全部拉黑","Everyone unblocked"))
-        }
-        if remote {
-            writeToServer("unblock-all",fields:[:]) { _ in clear() }
-        } else {
-            clear()
-        }
     }
 
     func libraryPage(_ page:String,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
