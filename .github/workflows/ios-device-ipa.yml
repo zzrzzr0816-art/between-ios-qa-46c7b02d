@@ -22,7 +22,7 @@ jobs:
         run: |
           settings=()
           if [[ "$PREVIEW_LOGIN" == "true" ]]; then
-            settings+=(SWIFT_ACTIVE_COMPILATION_CONDITIONS=BETWEEN_DEVICE_PREVIEW PRODUCT_BUNDLE_IDENTIFIER=com.example.between.playtest "INFOPLIST_KEY_CFBundleDisplayName=Between Test" CURRENT_PROJECT_VERSION=10)
+            settings+=(SWIFT_ACTIVE_COMPILATION_CONDITIONS=BETWEEN_DEVICE_PREVIEW PRODUCT_BUNDLE_IDENTIFIER=com.example.between.playtest "INFOPLIST_KEY_CFBundleDisplayName=Between Test" CURRENT_PROJECT_VERSION=11)
           fi
           xcodebuild -project Between.xcodeproj -target Between -configuration Release -sdk iphoneos -arch arm64 CONFIGURATION_BUILD_DIR="$RUNNER_TEMP/device-build" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO "${settings[@]}" build > "$RUNNER_TEMP/device-build.log" 2>&1 || { cat "$RUNNER_TEMP/device-build.log"; exit 1; }
       - name: Package unsigned ipa

@@ -445,7 +445,7 @@ extension ContentView {
                         storyTitle(story,width:width)
                             .frame(width:max(1,width-104))
                             .frame(maxWidth:.infinity)
-                            .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:true,expanded:true,enabled:detailOrigin == nil))
+                            .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:true,expanded:true,enabled:!detailFromLibrary))
                             .padding(.top,16)
                         if let detail = story.detail, !detail.isEmpty {
                             Text(detail).font(.system(size:16)).lineSpacing(6)
@@ -465,7 +465,7 @@ extension ContentView {
         }.frame(width:width,height:height)
     }
     func storyContentTransition(_ story: NativeStory,width: CGFloat,height: CGFloat) -> AnyTransition {
-        if utility != nil { return fullCardReveal(from:detailOrigin,width:width,height:height,radius:16) }
+        if detailFromLibrary { return .move(edge:.trailing) }
         let area = max(1,height-265)
         let cardHeight = H5Design.cardHeight(story.text,width:width,available:area)
         let card = CGRect(x:26,y:100+(area-cardHeight)/2,width:max(1,width-52),height:cardHeight)
@@ -541,15 +541,15 @@ extension ContentView {
                 VStack(alignment:.leading,spacing:0){
                     HStack(alignment:.top,spacing:10){
                         VStack(alignment:.leading,spacing:5){
-                            Text(nickname).font(.system(size:20,weight:.bold)).foregroundColor(Color(hex:0x3a3038))
+                            Text(nickname).font(.system(size:20,weight:.bold)).foregroundColor(Color(hex:0xffeed1))
                             HStack(spacing:5){
-                                Text("ID").font(.system(size:9,weight:.bold)).foregroundColor(Color(hex:0xb08a83)).padding(.horizontal,5).padding(.vertical,2).background(Color(hex:0xf7ece8),in:Capsule())
-                                Text(account.id).font(.system(size:12,weight:.medium,design:.monospaced)).foregroundColor(Color(hex:0x8d7c7d))
+                                Text("ID").font(.system(size:9,weight:.bold)).foregroundColor(Color(hex:0xf0cb85)).padding(.horizontal,5).padding(.vertical,2).background(Color(hex:0x4c3e2a),in:Capsule())
+                                Text(account.id).font(.system(size:12,weight:.medium,design:.monospaced)).foregroundColor(Color(hex:0xd7ba8c))
                             }
                         }
                         Spacer(minLength:0)
                         Button {openNicknameEditor()} label:{
-                            Text(l("修改昵称","Edit")).font(.system(size:12)).foregroundColor(Color(hex:0x9a7d78)).padding(.horizontal,11).frame(height:32).background(Color(hex:0xf6efec),in:Capsule())
+                            Text(l("修改昵称","Edit")).font(.system(size:12)).foregroundColor(Color(hex:0xf1d5a3)).padding(.horizontal,11).frame(height:32).background(Color(hex:0x43382b),in:Capsule())
                         }.buttonStyle(PressScale())
                     }
                     HStack(spacing:9){
@@ -557,22 +557,32 @@ extension ContentView {
                             guard auth.signOut() else { return }
                             toast(l("已退出登录","Signed out"))
                         } label:{
-                            Text(l("退出登录","Sign out")).font(.system(size:12)).foregroundColor(Color(hex:0x6d5f66)).padding(.horizontal,13).frame(height:36).background(Color(hex:0xf4efed),in:Capsule())
+                            Text(l("退出登录","Sign out")).font(.system(size:12)).foregroundColor(Color(hex:0xe9dfd1)).padding(.horizontal,13).frame(height:36).background(Color(hex:0x363230),in:Capsule())
                         }.buttonStyle(PressScale())
                         Button {confirmDeleteAccount=true} label:{
-                            Text(l("删除账号","Delete account")).font(.system(size:12)).foregroundColor(Color(hex:0xb85657)).padding(.horizontal,13).frame(height:36).background(Color(hex:0xfbecea),in:Capsule())
+                            Text(l("删除账号","Delete account")).font(.system(size:12)).foregroundColor(Color(hex:0xf3b1a7)).padding(.horizontal,13).frame(height:36).background(Color(hex:0x4a302e),in:Capsule())
                         }.buttonStyle(PressScale())
                         Spacer(minLength:0)
                     }.padding(.top,12)
-                    if let error=auth.errorText { Text(error).font(.system(size:11)).foregroundColor(Color(hex:0xb85657)).padding(.top,8) }
+                    if let error=auth.errorText { Text(error).font(.system(size:11)).foregroundColor(Color(hex:0xf3b1a7)).padding(.top,8) }
                 }.padding(18).frame(maxWidth:.infinity,alignment:.leading)
                     .background {
-                        RoundedRectangle(cornerRadius:20).fill(
-                            LinearGradient(colors:[Color(hex:0xf0ccc7),Color(hex:0xe9bbb9)],
-                                           startPoint:.topLeading,endPoint:.bottomTrailing))
+                        let shape = RoundedRectangle(cornerRadius:20)
+                        shape.fill(LinearGradient(colors:[Color(hex:0x35312d),Color(hex:0x151417)],
+                                                  startPoint:.topLeading,endPoint:.bottomTrailing))
+                            .overlay {
+                                Canvas { context, size in
+                                    var lines = Path()
+                                    for x in stride(from:-size.height,through:size.width,by:9.0) {
+                                        lines.move(to:CGPoint(x:x,y:size.height))
+                                        lines.addLine(to:CGPoint(x:x+size.height,y:0))
+                                    }
+                                    context.stroke(lines,with:.color(Color(hex:0xd5ae70).opacity(0.13)),lineWidth:0.5)
+                                }.clipShape(shape).allowsHitTesting(false)
+                            }
                     }
-                    .overlay(RoundedRectangle(cornerRadius:20).strokeBorder(Color(hex:0xdba7a5),lineWidth:1))
-                    .shadow(color:Color(hex:0x995867).opacity(0.12),radius:10,y:4)
+                    .overlay(RoundedRectangle(cornerRadius:20).strokeBorder(Color(hex:0xb2905d).opacity(0.75),lineWidth:1))
+                    .shadow(color:.black.opacity(0.20),radius:10,y:4)
                     .transition(.opacity)
             } else {
                 VStack(alignment:.leading,spacing:0){
@@ -752,7 +762,7 @@ extension ContentView {
                             Text(item.1).font(.system(size:12)).foregroundColor(Color(hex:0x9b8d8b)).lineLimit(2)
                         }.padding(15).frame(maxWidth:.infinity,alignment:.leading).background(.white,in:RoundedRectangle(cornerRadius:16)).overlay(RoundedRectangle(cornerRadius:16).stroke(Color(hex:0xf0e9e7),lineWidth:1))
                             .background {
-                                if item.2 != nil {
+                                if page == "saved", item.2 != nil {
                                     GeometryReader { proxy in
                                         Color.clear.preference(key:CardFrames.self,
                                                                value:[frameKey:proxy.frame(in:.named("card-stage"))])
@@ -768,17 +778,11 @@ extension ContentView {
                                         withAnimation(transitionAnimation){snapshotStory=story}
                                     }
                                 case "profile-answers":
-                                    guard let story = item.2, let answer = story.answers.first(where: { $0.id == item.3 }),
-                                          let side = NativeCamp(rawValue:answer.side) else { return }
-                                    withAnimation(transitionAnimation) {
-                                        openDetail(story,origin:cardFrames[frameKey])
-                                        discussionID = story.id
-                                        camp = side
-                                        campProgress = 1
-                                        openReply(answer)
-                                    }
+                                    guard let story = item.2, let answer = story.answers.first(where: { $0.id == item.3 }) else { return }
+                                    discussionID = story.id
+                                    openReply(answer)
                                 case "activity": if let key=item.3 {if reviewed.contains(key){reviewed.removeAll{$0==key}}else{reviewed.append(key)};persistLocal()}
-                                default: if let story=item.2 {openDetail(story,origin:cardFrames[frameKey])}
+                                default: if let story=item.2 {openDetail(story)}
                                 }
                             }
                     }
@@ -800,7 +804,10 @@ extension ContentView {
     }
     func closeReply() {
         replyFocused = false
-        withAnimation(transitionAnimation) { selectedReply = nil }
+        withAnimation(transitionAnimation) {
+            selectedReply = nil
+            if camp == nil { discussionID = nil }
+        }
     }
 
     // MARK: - Reply layer
@@ -814,8 +821,9 @@ extension ContentView {
         let side = NativeCamp(rawValue:answer.side)
         let accent = side?.accent ?? H5Design.muted
         let surface = side?.background ?? Color(hex:0xfffbf9)
+        let fromLibrary = camp == nil
         return ZStack(alignment:.topLeading){
-            Color.clear.contentShape(Rectangle()).onTapGesture{closeReply()}
+            (fromLibrary ? surface : Color.clear).contentShape(Rectangle()).onTapGesture{closeReply()}
             VStack(alignment:.leading,spacing:0){
                 HStack(spacing:13){
                     Button {closeReply()} label:{Text("‹").font(.system(size:32,weight:.light)).foregroundColor(Color(hex:0x5d5055)).frame(width:42,height:42).background(Color(hex:0xf2eae6),in:Circle())}.accessibilityLabel(l("返回评论","Back to comments"))
@@ -883,7 +891,7 @@ extension ContentView {
             .shadow(color:Color(hex:0x45313a).opacity(0.12),radius:12,y:5)
             .position(x:width/2,y:dialogCenter)
         }.frame(width:width,height:height).id(answer.id)
-            .transition(replyReveal(
+            .transition(fromLibrary ? .move(edge:.trailing) : replyReveal(
                 from:replyOrigin,
                 to:CGRect(x:(width-dialogWidth)/2,y:dialogCenter-dialogH/2,width:dialogWidth,height:dialogH)
             ))

@@ -57,7 +57,7 @@ struct ContentView: View {
     @State var selectedReply: NativeAnswer? = nil
     @State var cardFrames: [String: CGRect] = [:]
     @State var replyOrigin: CGRect? = nil
-    @State var detailOrigin: CGRect? = nil
+    @State var detailFromLibrary = false
     @State var snapshotOrigin: CGRect? = nil
     @Namespace var storyTitleMotion
     @State var replyText = ""
@@ -184,7 +184,7 @@ struct ContentView: View {
                 if let text = toastText { toastView(text,bottom:bottom).zIndex(33) }
             }.frame(width:w,height:h)
                 .coordinateSpace(name:"card-stage")
-                .onPreferenceChange(CardFrames.self) { cardFrames = $0 }
+                .onPreferenceChange(CardFrames.self) { if cardFrames != $0 { cardFrames = $0 } }
                 .clipped().offset(y:-top)
         }.ignoresSafeArea(.keyboard)
             .background { H5Design.background.ignoresSafeArea() }
@@ -576,7 +576,7 @@ struct ContentView: View {
             if long {
                 ScrollView(.vertical,showsIndicators:false){
                     storyTitle(story,width:width).frame(maxWidth:.infinity)
-                        .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:false,expanded:detailOrigin == nil && detailStory?.id == story.id))
+                        .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:false,expanded:!detailFromLibrary && detailStory?.id == story.id))
                         .background {
                             if interactive {
                                 GeometryReader { proxy in
@@ -595,7 +595,7 @@ struct ContentView: View {
                 Text(l("上下拖动阅读全文","Drag to read")).font(.system(size:11)).foregroundColor(H5Design.muted).padding(.top,8)
             } else {
                 storyTitle(story,width:width).frame(maxWidth:.infinity)
-                    .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:false,expanded:detailOrigin == nil && detailStory?.id == story.id))
+                    .modifier(StoryTitlePosition(id:story.id,namespace:storyTitleMotion,destination:false,expanded:!detailFromLibrary && detailStory?.id == story.id))
                     .padding(.top,20)
             }
             if let detail = story.detail, !detail.isEmpty {
@@ -635,10 +635,10 @@ struct ContentView: View {
         }
         return .opacity
     }
-    func openDetail(_ story:NativeStory,origin:CGRect? = nil){
+    func openDetail(_ story:NativeStory){
         guard !model.loading, let i=model.stories.firstIndex(where:{$0.id==story.id}) else { return }
-        model.index=i
-        detailOrigin = origin
+        detailFromLibrary = companionMode == .library
+        if !detailFromLibrary { model.index=i }
         withAnimation(transitionAnimation){detailStory=story}
     }
     func companions(width:CGFloat,top:CGFloat,height:CGFloat)->some View {
@@ -897,6 +897,7 @@ struct ContentView: View {
     func navItem(_ title:String,icon:String,active:Bool,action:@escaping ()->Void)->some View {
         let post = icon == "plus"
         let kind:NavGlyph.Kind = post ? .plus : icon == "person" ? .person : .house
+        let unread = icon == "person" ? unreadReplyCount : 0
         let color = Color(hex: active ? 0x6c4c58 : 0x8d8085)
         return Button(action:action){
             VStack(spacing:3){
@@ -905,8 +906,8 @@ struct ContentView: View {
                     NavGlyph(kind:kind).stroke(post ? Color.white:color, style:StrokeStyle(lineWidth:post ? 2*22/24:1.8*21/24,lineCap:.round,lineJoin:.round)).frame(width:post ? 22:21,height:post ? 22:21)
                 }.frame(width:post ? 36:31,height:post ? 25:24)
                     .overlay(alignment:.topTrailing) {
-                        if icon == "person", unreadReplyCount > 0 {
-                            replyBadge(unreadReplyCount).offset(x:8,y:-4)
+                        if unread > 0 {
+                            replyBadge(unread).offset(x:8,y:-4)
                         }
                     }
                 Text(title).font(.system(size:11,weight:.semibold)).foregroundColor(color)
