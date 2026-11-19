@@ -128,26 +128,18 @@ final class AuthManager: ObservableObject {
     private let cacheKey = "between.account.v1"
     private var checkingSession = false
 
-    var isPreview: Bool {
-        #if DEBUG
-        return ProcessInfo.processInfo.arguments.contains("-preview-fixture")
-        #else
-        return false
-        #endif
-    }
+    var isPreview: Bool { BetweenPreviewMode.enabled }
 
     var localStorageKey: String {
         let namespace = isPreview ? "native.preview.v2." : "native.local.v2."
         return namespace + (account?.id ?? "guest")
     }
 
-    #if DEBUG
     func usePreviewAccount() {
         guard isPreview else { return }
         errorText = nil
         account = BetweenAccount(id: "A7K2M9", nickname: zh ? "晚风" : "Nightfall")
     }
-    #endif
 
     var isGuest: Bool { account == nil }
     var isReady: Bool { account != nil }
@@ -430,7 +422,6 @@ struct AppleSignInControl: View {
     @ObservedObject var auth: AuthManager
 
     var body: some View {
-        #if DEBUG
         if auth.isPreview {
             Button { auth.usePreviewAccount() } label: {
                 Text(UserDefaults.standard.string(forKey: "native.language") == "zh" ? "登录测试账号" : "Sign in to test account")
@@ -442,9 +433,7 @@ struct AppleSignInControl: View {
         } else {
             appleButton
         }
-        #else
-        appleButton
-        #endif
+
     }
 
     private var appleButton: some View {

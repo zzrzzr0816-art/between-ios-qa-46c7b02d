@@ -216,13 +216,7 @@ enum NativeCamp: String {
     }
     private(set) var sourceStories: [NativeStory] = []
     var current: NativeStory? { stories.indices.contains(index) ? stories[index] : nil }
-    var preview: Bool {
-        #if DEBUG
-        return ProcessInfo.processInfo.arguments.contains("-preview-fixture")
-        #else
-        return false
-        #endif
-    }
+    var preview: Bool { BetweenPreviewMode.enabled }
     @discardableResult
     func load(_ language: String) async -> Bool {
         revision += 1; let version = revision
@@ -317,5 +311,17 @@ enum NativeCamp: String {
             if i == 1 { answers.append(NativeAnswer(id:"extra-devil",author:zh ? "青禾":"June",side:"devil",text:zh ? "先试一件你真的好奇的事。别人有计划不代表你必须照着走。":"Try one thing you are actually curious about. Someone else's plan does not have to become your deadline.",likes:0,replies:[])) }
             return NativeStory(id:"fixture-\(i)",text:text,created:created,answers:answers)
         }
+    }
+}
+
+enum BetweenPreviewMode {
+    static var enabled: Bool {
+        #if BETWEEN_DEVICE_PREVIEW
+        return true
+        #elseif DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-preview-fixture")
+        #else
+        return false
+        #endif
     }
 }

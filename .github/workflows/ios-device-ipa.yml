@@ -2,6 +2,10 @@ name: Device IPA
 
 on:
   workflow_dispatch:
+    inputs:
+      preview_login:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -13,8 +17,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build unsigned device app
+        env:
+          PREVIEW_LOGIN: ${{ inputs.preview_login }}
         run: |
-          xcodebuild -project Between.xcodeproj -target Between -configuration Release -sdk iphoneos -arch arm64 CONFIGURATION_BUILD_DIR="$RUNNER_TEMP/device-build" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build > "$RUNNER_TEMP/device-build.log" 2>&1 || { cat "$RUNNER_TEMP/device-build.log"; exit 1; }
+          settings=()
+          if [[ "$PREVIEW_LOGIN" == "true" ]]; then
+            settings+=(SWIFT_ACTIVE_COMPILATION_CONDITIONS=BETWEEN_DEVICE_PREVIEW PRODUCT_BUNDLE_IDENTIFIER=com.example.between.playtest "INFOPLIST_KEY_CFBundleDisplayName=Between Test" CURRENT_PROJECT_VERSION=9)
+          fi
+          xcodebuild -project Between.xcodeproj -target Between -configuration Release -sdk iphoneos -arch arm64 CONFIGURATION_BUILD_DIR="$RUNNER_TEMP/device-build" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO "${settings[@]}" build > "$RUNNER_TEMP/device-build.log" 2>&1 || { cat "$RUNNER_TEMP/device-build.log"; exit 1; }
       - name: Package unsigned ipa
         run: |
           set -euo pipefail
