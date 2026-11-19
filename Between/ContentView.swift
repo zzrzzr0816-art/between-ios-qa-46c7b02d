@@ -131,7 +131,7 @@ struct ContentView: View {
                     Color(hex:0xfffaf8).zIndex(9).allowsHitTesting(false)
                 }
                 if let page = utility {
-                    utilityPage(page,width:w,height:h,top:top,bottom:bottom).id(page).zIndex(page == "report" ? 30 : 10).transition(pageTransition(page))
+                    utilityPage(page,width:w,height:h,top:top,bottom:bottom).id(page).zIndex(page == "report" ? 30 : (companionMode == .library ? 11 : 10)).transition(pageTransition(page))
                 }
                 if let answer = selectedReply { replyOverlay(answer,width:w,height:h,top:top,bottom:bottom).zIndex(29) }
                 if let story = detailStory {
@@ -457,10 +457,9 @@ struct ContentView: View {
             }
         }
         if axis == .openComments {
-            if value.translation.width != 0 {
-                camp = value.translation.width < 0 ? .angel : .devil
-            }
-            campProgress = min(1,abs(value.translation.width)/max(1,width))
+            if camp == nil { camp = value.translation.width < 0 ? .angel : .devil }
+            let distance = value.translation.width * (camp?.sign ?? 0)
+            campProgress = min(1,max(0,distance)/max(1,width))
         } else if axis == .feed {
             let sign: CGFloat = value.translation.height < 0 ? -1 : 1
             let target = model.index + (sign < 0 ? 1 : -1)
@@ -483,7 +482,11 @@ struct ContentView: View {
         guard !settling, axis == .openComments || axis == .feed else { return }
         feedChanged(value,width:width,area:area)
         if axis == .openComments {
-            settleCamp(to: abs(value.translation.width) > max(65,width*0.23) ? 1 : 0)
+            let sign = camp?.sign ?? 0
+            let distance = value.translation.width * sign
+            let projected = value.predictedEndTranslation.width * sign
+            let commit = distance > max(65,width*0.23) || (distance > 35 && projected > width*0.45)
+            settleCamp(to: commit ? 1 : 0)
         } else if let target = verticalTarget, let next = model.stories.first(where: { $0.id == target }), let story = model.current {
             let a = H5Design.cardHeight(story.text,width:width,available:area)
             let b = H5Design.cardHeight(next.text,width:width,available:area)

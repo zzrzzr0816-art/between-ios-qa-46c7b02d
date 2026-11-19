@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -36,10 +36,18 @@ const client = IdbClient.connect(await supervisor.socketFor(sim.udid));
 let hidError: Error | undefined;
 const hid = client.openHid(error => { hidError = error; });
 let lastTree = '';
+let recording: ReturnType<typeof spawn> | undefined;
+let recordingFinished: Promise<void> | undefined;
 try {
   simctl('install', sim.udid, app);
   simctl('launch', '--terminate-running-process', sim.udid, bundle,
     '-preview-fixture', '-ui-verify-companions');
+  recording = spawn('xcrun', ['simctl', 'io', sim.udid, 'recordVideo', '--codec=h264',
+    join(evidence, 'between-interactions.mp4')], { stdio: 'inherit' });
+  recordingFinished = new Promise(resolve => {
+    recording!.once('close', () => resolve());
+    recording!.once('error', error => { console.warn(error); resolve(); });
+  });
 
   const waitFor = async (step: string, check: (labels: Set<string>) => boolean) => {
     const deadline = Date.now() + 25_000;
@@ -197,6 +205,12 @@ try {
   try { simctl('io', sim.udid, 'screenshot', join(evidence,'failure.png')); } catch {}
   throw error;
 } finally {
+  if (recording && recordingFinished) {
+    recording.kill('SIGINT');
+    const deadline = setTimeout(() => recording?.kill('SIGKILL'), 15_000);
+    await recordingFinished;
+    clearTimeout(deadline);
+  }
   hid.end();
   client.close();
   supervisor.stopAll();
