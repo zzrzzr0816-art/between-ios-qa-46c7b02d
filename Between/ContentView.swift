@@ -19,10 +19,9 @@ struct ContentView: View {
     @State private var pendingFeedRefresh = false
     private var editingDiscussion: Bool { composerFocused || replyFocused }
     @State var serverWriteInFlight = false
-    var usesLiveFeed: Bool { !model.preview && !showingTestStories }
+    var usesLiveFeed: Bool { !model.preview }
     var serverViewer: String { auth.userId ?? "guest" }
-    @State private var testStoriesCreated: Double?
-    var showingTestStories: Bool { testStoriesCreated != nil }
+    @AppStorage("between.officialExamples.startedAt") private var examplesStartedAt: Double = 0
     @State private var transitionRevision = 0
     @State var verticalProgress: CGFloat = 0
     @State var verticalSign: CGFloat = -1
@@ -391,7 +390,7 @@ struct ContentView: View {
     }
 
     func loadNextStories() async {
-        if !showingTestStories, await model.loadNext() {
+        if await model.loadNext() {
             pendingFeedRefresh = true
             applyPendingFeedRefresh()
         }
@@ -427,15 +426,15 @@ struct ContentView: View {
             toast(l("部分本地数据无法读取，已保留备份","Some local data couldn’t be read. A backup was kept."))
         }
     }
-    func endTestStories() {
-        testStoriesCreated = nil
-        rebuildVisibleStories()
-        closeUtility()
-    }
     func rebuildVisibleStories() {
         let previous = model.current?.id
         let now = Date().timeIntervalSince1970
-        let source = testStoriesCreated.map { NativeFeedModel.fixtures(language,created:$0) } ?? model.sourceStories
+        var source = model.sourceStories
+        if usesLiveFeed, model.loadedLanguage == language, source.isEmpty, model.nextOffset == nil,
+           !model.loading, !model.error {
+            if examplesStartedAt == 0 { examplesStartedAt = now }
+            source = NativeFeedModel.officialExamples(language,created:examplesStartedAt*1000)
+        }
         let (visible, changed) = localState.visibleStories(merging:source,at:now)
         let index = previous.flatMap { id in visible.firstIndex { $0.id == id } }
             ?? min(model.index,max(0,visible.count-1))
@@ -479,7 +478,6 @@ struct ContentView: View {
                     guard !model.loading else { return }
                     let requested = zh ? "en" : "zh"
                     language = requested
-                    if showingTestStories { rebuildVisibleStories(); return }
                     Task {
                         if await model.load(requested,viewer:serverViewer) {
                             rebuildVisibleStories()
@@ -528,13 +526,6 @@ struct ContentView: View {
                         Button(l("重试","Retry")) { Task { if await model.load(language,viewer:serverViewer) { rebuildVisibleStories() } } }
                     } else if model.nextOffset != nil {
                         Button(model.pageError ? l("重试加载","Retry loading") : l("继续加载","Load more")) { Task { await loadNextStories() } }
-                    }
-                    if !model.loadingMore && !showingTestStories {
-                        Button(l("载入 5 条测试烦恼","Load 5 test stories")) {
-                            testStoriesCreated = Date().timeIntervalSince1970*1000
-                            rebuildVisibleStories()
-                        }
-                        .font(.system(size:13,weight:.semibold))
                     }
                 }.padding(30).background(H5Design.card,in:RoundedRectangle(cornerRadius:30))
             }
@@ -605,7 +596,7 @@ struct ContentView: View {
             settleFeed(to: commit ? next.id : nil, releaseBoost: max(0,prediction-distance)/max(1,travel))
         } else {
             if value.translation.height < -55, model.index >= model.stories.count-1 {
-                if !showingTestStories && (model.nextOffset != nil || model.loadingMore) {
+                if model.nextOffset != nil || model.loadingMore {
                     Task { await loadNextStories() }
                 } else {
                     toast(l("这是最后一条啦","You’re all caught up"))
@@ -930,7 +921,6 @@ struct ContentView: View {
         var pruned = localState
         guard pruned.prune(at: now, expiredStoryIDs: expired) else { return }
         localState = pruned
-        if let created = testStoriesCreated, created/1000+86400 <= now { testStoriesCreated = nil }
         snapshots = localState.snapshots
         hidden = localState.hidden
         liked = localState.liked

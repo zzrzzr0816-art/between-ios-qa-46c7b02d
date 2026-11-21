@@ -435,6 +435,37 @@ enum NativeCamp: String {
         return result
     }
 
+    static func officialExamples(_ language: String, created: Double) -> [NativeStory] {
+        let entries: [(Int, String, String)] = [
+            (4, "房东问我要不要续租。我喜欢楼下那个修车摊，也认识了邻居，可下一次涨租我是真扛不住。", "My landlord asked if I’m renewing. I know the neighbors now, and the bike repair guy downstairs knows me by name. One more rent hike and I’m out, though."),
+            (12, "下班坐过了两站，耳机里还是那首歌。以前总把它发给一个人，现在连聊天框都找不着了。", "I missed my stop by two stations with the same song on repeat. I used to send it to someone. I can’t even find our chat now."),
+            (27, "我爸学会发语音以后，一条能讲两分钟。我有时候开两倍速，听到他问我有没有好好吃饭，又切回来了。", "Dad learned to send voice notes. Two minutes each. I play them at double speed until he asks if I’ve been eating properly, then I slow it back down."),
+            (43, "摊位隔壁的新店比我便宜两块。老客今天去那边买了，还隔着马路跟我招手。我笑着挥手，回家翻了一遍账本。", "The new stall charges less than I do. A regular bought from them today and waved at me across the street. I waved back, then went home and checked the books."),
+            (58, "同事说团建唱歌不准带家属。我不是想带人，我是想知道不去行不行，总不能每回都借口猫吐了吧。", "My coworker said karaoke is staff only. I don’t want to bring anyone. I want to know if I can skip it without claiming my cat threw up again."),
+            (81, "左耳听不清以后，我最怕别人边走边跟我讲话。叫他们再说一遍不难，难的是第三遍。", "Since losing some hearing in my left ear, I dread walk-and-talk conversations. Asking someone to repeat themselves isn’t hard. Asking a third time is."),
+            (103, "我姐每次回来都买好多东西给孩子，我负责看牙、接放学。今天孩子画全家福，偏偏把我画得最小。", "My sister brings the kids gifts whenever she visits. I do the dentist and school pickups. Guess who got drawn smallest in today’s family portrait."),
+            (129, "试了三次才做出像样的馒头，拍完照才想起我奶奶早就看不清手机了。寄过去又怕路上坏。", "It took me three tries to get the steamed buns right. I took a photo, then remembered my grandma can’t see her phone screen anymore. They’d go bad in the mail."),
+            (156, "刚换了名字，老同学聚会还是喊我以前那个。我知道他们不见得有恶意，可我也没法当没听见。", "I changed my name recently. At the reunion everyone used the old one. They probably didn’t mean anything by it, but I couldn’t pretend not to hear it."),
+            (190, "夜班保安大哥总给我留着侧门，今天听说他要被调走。想请他喝杯热的，又怕人家以为我有事求他。", "The night guard always leaves the side door open for me. He’s transferring. I want to bring him something hot to drink without making it look like I need a favor."),
+            (226, "练了半年的贝斯，排练时还是追不上鼓。大家说下次再试，可我听得出来他们在等我自己开口退出。", "Six months on bass and I still can’t keep up with the drums. They say we’ll try again next week. It feels like they’re waiting for me to quit first."),
+            (263, "退休以后我每天也定七点的闹钟。不定的话，醒来就不知道第一件事该做什么。", "I still set my alarm for seven since retiring. If I don’t, I wake up without a clue what to do first."),
+            (302, "两个人合租，冰箱冻饺子可以随便吃，说好了的。但她这星期把我带回来的那盒也吃了，我妈包的。", "My roommate and I share whatever dumplings are in the freezer. That was the deal. This week she ate the ones I brought home. My mom made those."),
+            (353, "周末去看球，儿子没上场。回家他倒挺乐呵，路上问我怎么不说话。我是不是比他还在意？", "My son sat on the bench the whole game. He was cheerful on the way home and asked why I was so quiet. Maybe I care about it more than he does."),
+            (407, "看到以前一起跑外卖的伙计发了毕业照，点了赞，打的那句恭喜还是删了。我们都两年没说过话了。", "Someone I used to deliver food with posted graduation photos. I liked one, typed congrats, then deleted it. We haven’t spoken in two years."),
+            (475, "想领养那只三条腿的狗。实话是，我连自己加班到几点都决定不了。每次路过救助站我还是会看一眼。", "I want to adopt the three-legged dog. Truth is, I don’t even get to decide when I leave work. I still look in every time I pass the shelter."),
+            (548, "每次开会我都把想说的写在纸上。等轮到我，别人已经提过了。回工位的时候我还舍不得把纸扔掉。", "I write down what I want to say in meetings. By the time it’s my turn, someone else has said it. I still can’t quite throw the paper away."),
+            (641, "和爸妈视频，我说这儿挺好，挂了电话才发现窗外下雪了。到这儿三个月，还没找到能顺手发张照片的人。", "I told my parents on video that things are good here. After hanging up I noticed it was snowing. Three months in, I still don’t have someone here I’d casually send a photo to."),
+            (787, "二手平台有人来问旧相机，出价也合理。我回了一句还在，之后就一直没再点开。相机三年没用了。", "Someone made a fair offer for my old camera. I said it was still available and haven’t opened the chat since. I haven’t used it in three years."),
+            (982, "邻居家孩子在练那首我考级时最讨厌的曲子。今天她终于没弹错，我差点在墙这边鼓掌。明天还得跟她家商量练琴时间。", "The kid next door is learning the piece I hated most at piano exams. Today she finally got it right and I almost applauded through the wall. I still need to ask her parents about practice hours tomorrow.")
+        ]
+        let zh = language == "zh"
+        return entries.enumerated().map { index, entry in
+            let label = zh ? "官方示例" : "Official example"
+            return NativeStory(id:"example-\(index)",text:label + "\n" + (zh ? entry.1 : entry.2),
+                created:created-Double(entry.0)*60_000,answers:[],author:label)
+        }
+    }
+
     static func fixtures(_ language:String,created:Double = Date().timeIntervalSince1970*1000) -> [NativeStory] {
         let zh = language == "zh"
         let titles = zh ? ["最好的朋友要搬去另一座城市了。我该告诉他，我其实很难过吗？","毕业后大家好像都有方向，只有我还不知道自己想过什么样的生活。","如果一个选择没有标准答案，我到底该听理智的，还是听自己的？","朋友每次约见面都迟到。我该直接告诉他这让我不舒服吗？","我想给自己放个周末，做家务和回消息却一直占满时间。我应该从哪件事开始拒绝？"] : ["My best friend is moving away. Do I tell them how much it hurts?","Everyone seems to have a plan after graduation. I still have no idea what kind of life I want.","When there is no right answer, do I trust my head or follow what I actually want?","My friend is always late when we meet. Should I tell them how it makes me feel?","I want one weekend to rest, but chores and messages always fill it. Where do I start saying no?"]

@@ -7,7 +7,8 @@ private let replyCardBorder = Color(hex:0xebe0d5)
 extension ContentView {
     // MARK: - Conversation side panel
     func comments(_ chosen:NativeCamp,width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
-        VStack(alignment:.leading,spacing:0){
+        let isOfficialExample = discussionStory?.id.hasPrefix("example-") == true
+        return VStack(alignment:.leading,spacing:0){
             HStack(spacing:10){
                 Button {closeComments()} label:{
                     Image(systemName:"chevron.left").font(.system(size:13,weight:.medium))
@@ -23,13 +24,14 @@ extension ContentView {
                 LazyVStack(spacing:10){
                     let answers=discussionStory?.answers.filter {$0.side==chosen.rawValue} ?? []
                     if answers.isEmpty {
-                        Text(l("还没有建议，来做第一个吧 ✨","No responses yet. Start the conversation ✨")).font(.system(size:14)).foregroundColor(Color(hex:0xa09494)).padding(.vertical,35)
+                        Text(isOfficialExample ? l("官方示例仅供阅读","Official examples are read-only") : l("还没有建议，来做第一个吧 ✨","No responses yet. Start the conversation ✨")).font(.system(size:14)).foregroundColor(Color(hex:0xa09494)).padding(.vertical,35)
                     }
                     ForEach(answers){answer in commentCard(answer)}
                 }.padding(.horizontal,20).padding(.top,10).padding(.bottom,18)
                     .id(chosen)
                     .transition(.asymmetric(insertion:.move(edge: chosen == .angel ? .trailing:.leading).combined(with:.opacity),removal:.opacity))
             }
+            if !isOfficialExample {
             HStack(spacing:9){
                 MusicComposer(text:$composer,height:$composerHeight,focused:$composerFocused,
                               draft:$composerMusic,camp:chosen,chinese:zh,prompt:l("说点什么…","Say something kind…"))
@@ -39,6 +41,7 @@ extension ContentView {
                 .opacity(selectedReply == nil ? 1 : 0)
                 .allowsHitTesting(selectedReply == nil)
                 .accessibilityHidden(selectedReply != nil)
+            }
         }.frame(width:width,height:max(1,height-keyboardHeight),alignment:.top)
             .frame(width:width,height:height,alignment:.top)
             .modifier(ConversationForeground(progress:campProgress, incoming:true))
@@ -206,6 +209,10 @@ extension ContentView {
         guard let text = musicPayload(composer,draft:composerMusic), requireLogin("respond") else { return }
         guard camp == chosen, let story = discussionStory,
               story.created/1000+86400 > Date().timeIntervalSince1970 else { return }
+        guard !story.id.hasPrefix("example-") else {
+            toast(l("官方示例仅供阅读","Official examples are read-only"))
+            return
+        }
         if usesLiveFeed && !story.id.hasPrefix("local-") {
             let draft = composer, attachment = composerMusic
             writeToServer("answers",fields:["storyId":story.id,"side":chosen.rawValue,"text":text]) { _ in
@@ -311,22 +318,19 @@ extension ContentView {
     }
     func morePage(width:CGFloat,height:CGFloat,top:CGFloat,bottom:CGFloat)->some View {
         let available = max(1,height-top-bottom-20)
-        let rows = (model.current == nil ? 1 : 4)+(showingTestStories ? 1 : 0)
+        let rows = model.current == nil ? 1 : 4
         let bodyHeight = min(CGFloat(rows*56+max(0,rows-1)*8),max(1,available-66))
         return VStack(alignment:.leading,spacing:4){
             sheetHead(l("更多","More"),top:0,padBottom:4)
             ScrollView {
             VStack(spacing:8){
-                if showingTestStories {
-                    moreRow(l("退出测试烦恼","Exit test stories")) { endTestStories() }
-                }
                 if model.current != nil {
                     moreRow("♡ "+l("保存完整讨论","Save discussion")){saveSnapshot()}
                 }
                 if model.current?.id.hasPrefix("local-") == true {
                     moreRow("✎ "+l("补充进展","Add an update")){updateText="";openUtility("update")}
                 }
-                if let story = model.current, !isOwnReportTarget("story",story.id,in:story) {
+                if let story = model.current, !story.id.hasPrefix("example-"), !isOwnReportTarget("story",story.id,in:story) {
                     moreRow("⚑ "+l("举报内容","Report content")){openReport("story",story.id)}
                 }
                 if let story = model.current, !story.id.hasPrefix("local-") {
